@@ -26,7 +26,12 @@ export default function LoginPage() {
     setIsLoading(false)
 
     if (result?.error) {
-      setError('Invalid email or password')
+      // NextAuth returns "CredentialsSignin" for invalid credentials; surface other errors.
+      setError(
+        result.error === 'CredentialsSignin'
+          ? 'Invalid email or password'
+          : result.error
+      )
       return
     }
 

@@ -26,6 +26,7 @@ export function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -62,6 +63,9 @@ export function ChatInterface({
 
       try {
         abortRef.current = new AbortController()
+        timeoutRef.current = setTimeout(() => {
+          abortRef.current?.abort()
+        }, 30000)
 
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -84,29 +88,24 @@ export function ChatInterface({
           setConversationId(convId)
         }
 
-        // Stream the response
-        const reader = res.body?.getReader()
-        if (!reader) throw new Error('No response stream')
-
-        const decoder = new TextDecoder()
-        let accumulated = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          accumulated += decoder.decode(value, { stream: true })
-
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantId
-                ? { ...msg, content: accumulated }
-                : msg
-            )
-          )
+        const data = await res.json().catch(() => ({}))
+        if (!data?.text) {
+          throw new Error('Empty response from server')
         }
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, content: data.text as string }
+              : msg
+          )
+        )
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('Response timed out. Please try again.')
+          setMessages((prev) => prev.filter((m) => m.id !== assistantId || m.content))
+          return
+        }
         const errorMessage =
           err instanceof Error
             ? err.message
@@ -117,6 +116,10 @@ export function ChatInterface({
       } finally {
         setIsLoading(false)
         abortRef.current = null
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current)
+          timeoutRef.current = null
+        }
         inputRef.current?.focus()
       }
     },

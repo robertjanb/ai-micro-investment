@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { streamText } from 'ai'
+import { generateText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -11,6 +11,8 @@ import { checkRateLimit, CHAT_RATE_LIMIT } from '@/lib/rate-limit'
 const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY ?? '',
+  // OpenRouter is OpenAI-compatible (chat completions), not Responses API.
+  compatibility: 'compatible',
   headers: {
     'HTTP-Referer': process.env.NEXTAUTH_URL || 'http://localhost:3000',
     'X-Title': 'AI Micro-Investment Companion',
@@ -31,6 +33,7 @@ export async function POST(req: Request) {
     )
   }
 
+  let timeout: ReturnType<typeof setTimeout> | null = null
   try {
     const body = await req.json()
     const parsed = streamingChatSchema.safeParse(body)
@@ -106,35 +109,58 @@ export async function POST(req: Request) {
     const model = process.env.AI_MODEL || 'anthropic/claude-sonnet-4-20250514'
     const convId = conversation.id
 
-    // Stream response
-    const result = streamText({
-      model: openrouter(model),
+    // Generate response (non-streaming) with timeout
+    const controller = new AbortController()
+    timeout = setTimeout(() => controller.abort(), 30000)
+
+    const result = await generateText({
+      model: openrouter.chat(model),
       system: systemPrompt,
       messages: truncated.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
-      onFinish: async ({ text }) => {
-        // Save assistant message after stream completes
-        await prisma.message.create({
-          data: {
-            conversationId: convId,
-            role: 'assistant',
-            content: text,
-          },
-        })
+      abortSignal: controller.signal,
+    })
+
+    if (timeout) clearTimeout(timeout)
+
+    await prisma.message.create({
+      data: {
+        conversationId: convId,
+        role: 'assistant',
+        content: result.text,
       },
     })
 
-    return result.toTextStreamResponse({
-      headers: {
-        'X-Conversation-Id': convId,
-      },
-    })
-  } catch (error) {
-    console.error('Chat error:', error)
     return NextResponse.json(
-      { error: 'I\'m having trouble connecting right now. Please try again in a moment.' },
+      { text: result.text },
+      {
+        headers: {
+          'X-Conversation-Id': convId,
+        },
+      }
+    )
+  } catch (error) {
+    if (timeout) clearTimeout(timeout)
+    if (error instanceof Error && error.name === 'AbortError') {
+      return NextResponse.json(
+        { error: 'Response timed out. Please try again.' },
+        { status: 504 }
+      )
+    }
+    console.error('Chat error:', error)
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'I\'m having trouble connecting right now. Please try again in a moment.'
+    return NextResponse.json(
+      {
+        error:
+          process.env.NODE_ENV === 'production'
+            ? 'I\'m having trouble connecting right now. Please try again in a moment.'
+            : message,
+      },
       { status: 500 }
     )
   }
