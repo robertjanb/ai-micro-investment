@@ -4,18 +4,22 @@ interface MessageProps {
 }
 
 export function Message({ role, content }: MessageProps) {
+  const isUser = role === 'user'
   return (
-    <div
-      className={`flex ${role === 'user' ? 'justify-end' : 'justify-start'}`}
-    >
-      <div
-        className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap ${
-          role === 'user'
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-        }`}
-      >
-        {content}
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className="max-w-[82%] space-y-1">
+        <div className={`text-[10px] uppercase tracking-[0.2em] ${isUser ? 'text-slate-400 text-right' : 'text-slate-400'}`}>
+          {isUser ? 'You' : 'Analyst'}
+        </div>
+        <div
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap border ${
+            isUser
+              ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+              : 'bg-white text-slate-800 border-slate-200 shadow-sm'
+          }`}
+        >
+          {content}
+        </div>
       </div>
     </div>
   )

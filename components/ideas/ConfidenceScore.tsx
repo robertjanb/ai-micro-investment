@@ -42,9 +42,9 @@ export function ConfidenceScore({
     <div className="relative">
       <button
         onClick={() => setShowLegend(!showLegend)}
-        className="flex items-center gap-2 text-sm group"
+        className="flex items-center gap-2 text-xs group"
       >
-        <span className="text-gray-500 dark:text-gray-400">
+        <span className="text-slate-500">
           {score}% ({activeCount}/4)
         </span>
         <div className="flex gap-1">
@@ -53,21 +53,21 @@ export function ConfidenceScore({
               key={key}
               className={`w-2.5 h-2.5 rounded-full ${
                 signals[key]
-                  ? 'bg-blue-500'
-                  : 'bg-gray-200 dark:bg-gray-600'
+                  ? 'bg-teal-500'
+                  : 'bg-slate-200'
               }`}
               title={SIGNAL_LABELS[key].label}
             />
           ))}
         </div>
-        <span className="text-xs text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
           details
         </span>
       </button>
 
       {showLegend && (
-        <div className="absolute z-10 mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3">
-          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+        <div className="absolute z-10 mt-2 w-72 bg-white border border-slate-200 rounded-lg shadow-lg p-3">
+          <div className="text-xs font-medium text-slate-500 mb-2">
             Signal Breakdown
           </div>
           <div className="space-y-2">
@@ -76,16 +76,16 @@ export function ConfidenceScore({
                 <div
                   className={`w-2.5 h-2.5 rounded-full mt-1 shrink-0 ${
                     signals[key]
-                      ? 'bg-blue-500'
-                      : 'bg-gray-200 dark:bg-gray-600'
+                      ? 'bg-teal-500'
+                      : 'bg-slate-200'
                   }`}
                 />
                 <div>
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <div className="text-sm font-medium text-slate-700">
                     {SIGNAL_LABELS[key].label}
                     {signals[key] ? ' (active)' : ' (inactive)'}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-xs text-slate-500">
                     {SIGNAL_LABELS[key].description}
                   </div>
                 </div>

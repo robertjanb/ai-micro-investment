@@ -12,24 +12,28 @@ interface ChatMessage {
 interface ChatInterfaceProps {
   initialMessages?: ChatMessage[]
   conversationId?: string
+  quickPrompts?: string[]
 }
 
 export function ChatInterface({
   initialMessages = [],
   conversationId: initialConversationId,
+  quickPrompts = [],
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [conversationId, setConversationId] = useState(initialConversationId)
   const [error, setError] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = scrollRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
   const handleSubmit = useCallback(
@@ -137,8 +141,8 @@ export function ChatInterface({
   const overLimit = charCount > 2000
 
   return (
-    <div className="flex flex-col h-[calc(100vh-16rem)]">
-      <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+    <div className="flex flex-col min-h-[520px] h-[calc(100vh-22rem)] min-h-0">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-4 pb-4">
         {messages.map((msg) => (
           <Message key={msg.id} role={msg.role} content={msg.content} />
         ))}
@@ -149,12 +153,29 @@ export function ChatInterface({
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {error && (
-        <div className="text-sm text-red-600 dark:text-red-400 mb-2">
+        <div className="text-sm text-rose-600 mb-2">
           {error}
+        </div>
+      )}
+
+      {quickPrompts.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {quickPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => {
+                setInput(prompt)
+                inputRef.current?.focus()
+              }}
+              className="text-xs text-slate-600 border border-slate-200 rounded-full px-3 py-1 bg-white hover:border-slate-300 hover:text-slate-900"
+            >
+              {prompt}
+            </button>
+          ))}
         </div>
       )}
 
@@ -166,18 +187,18 @@ export function ChatInterface({
           onKeyDown={handleKeyDown}
           placeholder="Ask about an investment idea..."
           rows={1}
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white text-sm"
+          className="flex-1 px-3 py-2 border border-slate-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white text-sm"
           disabled={isLoading}
         />
         <button
           type="submit"
           disabled={isLoading || !input.trim() || overLimit}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
         >
           Send
         </button>
       </form>
-      <div className={`text-xs mt-1 ${overLimit ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
+      <div className={`text-xs mt-1 ${overLimit ? 'text-rose-500' : 'text-slate-400'}`}>
         {charCount}/2000 characters
       </div>
     </div>

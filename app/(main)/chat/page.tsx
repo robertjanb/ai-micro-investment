@@ -108,52 +108,97 @@ export default function ChatPage() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
-        <div className="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
-        <div className="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
+        <div className="app-card h-28 animate-pulse" />
+        <div className="app-card h-40 animate-pulse" />
+        <div className="app-card h-40 animate-pulse" />
       </div>
     )
   }
 
+  const quickPrompts = [
+    "Summarize today's ideas in two sentences.",
+    'Which idea looks most conservative and why?',
+    'Compare the top two confidence scores.',
+    "What's the biggest red flag today?",
+  ]
+
   return (
     <div className="space-y-6">
-      {isFirstVisit && <WelcomeMessage />}
-
-      {nudgeMessage && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm text-yellow-800 dark:text-yellow-300">
-          {nudgeMessage}
-        </div>
-      )}
-
-      {ideas.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">
-            Today&apos;s Ideas
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {ideas.map((idea) => (
-              <IdeaCard
-                key={idea.id}
-                id={idea.id}
-                ticker={idea.ticker}
-                companyName={idea.companyName}
-                oneLiner={idea.oneLiner}
-                thesis={idea.thesis}
-                bearCase={idea.bearCase}
-                riskLevel={idea.riskLevel}
-                confidenceScore={idea.confidenceScore}
-                signals={idea.signals}
-                currentPrice={idea.currentPrice}
-                currency={idea.currency}
-                onAddToWatchlist={handleAddToWatchlist}
-                isOnWatchlist={watchlistIds.has(idea.id)}
-              />
-            ))}
+      <div className="app-card p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">
+              Daily Brief
+            </p>
+            <h1 className="font-display text-2xl text-slate-900">
+              Modern fintech, zero hype -- just signal-based ideas.
+            </h1>
+            <p className="text-sm text-slate-600">
+              Ask for a quick read, a deeper bear case, or a signal breakdown. All prices and ideas are simulated.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <div className="app-pill">
+              {ideas.length} ideas
+            </div>
+            <div className="app-pill">
+              {watchlistIds.size} on watchlist
+            </div>
+            <div className="app-pill">
+              Updated today
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
-      <ChatInterface />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="space-y-4">
+          {isFirstVisit && <WelcomeMessage />}
+
+          {nudgeMessage && (
+            <div className="app-card-muted px-4 py-3 text-sm text-slate-700 border border-amber-200 bg-amber-50">
+              {nudgeMessage}
+            </div>
+          )}
+
+          <div className="app-card p-4">
+            <ChatInterface quickPrompts={quickPrompts} />
+          </div>
+        </section>
+
+        {ideas.length > 0 && (
+          <aside className="space-y-4">
+            <div className="app-card p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-sm text-slate-700">
+                  Today&apos;s Ideas
+                </h2>
+                <span className="app-pill">{ideas.length} ideas</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {ideas.map((idea) => (
+                  <IdeaCard
+                    key={idea.id}
+                    id={idea.id}
+                    ticker={idea.ticker}
+                    companyName={idea.companyName}
+                    oneLiner={idea.oneLiner}
+                    thesis={idea.thesis}
+                    bearCase={idea.bearCase}
+                    riskLevel={idea.riskLevel}
+                    confidenceScore={idea.confidenceScore}
+                    signals={idea.signals}
+                    currentPrice={idea.currentPrice}
+                    currency={idea.currency}
+                    onAddToWatchlist={handleAddToWatchlist}
+                    isOnWatchlist={watchlistIds.has(idea.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   )
 }
