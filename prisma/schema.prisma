@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  passwordHash   String
+  resetToken     String?
+  resetTokenExp  DateTime?
+  tokenVersion   Int             @default(0)
+  conversations  Conversation[]
+  watchlist      WatchlistItem[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String       // 'user' | 'assistant'
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+}
+
+model Idea {
+  id              String          @id @default(cuid())
+  ticker          String
+  companyName     String
+  oneLiner        String
+  thesis          String          @db.Text
+  bearCase        String          @db.Text
+  confidenceScore Int
+  signals         Json
+  riskLevel       String          // 'safe' | 'interesting' | 'spicy'
+  initialPrice    Float
+  currentPrice    Float
+  currency        String          @default("EUR")
+  generatedDate   DateTime        @default(now()) @db.Date
+  priceHistory    PriceHistory[]
+  watchlistItems  WatchlistItem[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([generatedDate])
+  @@index([createdAt])
+}
+
+model WatchlistItem {
+  id               String   @id @default(cuid())
+  visitorSessionId String?
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ideaId           String
+  idea             Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  addedPrice       Float
+  addedAt          DateTime @default(now())
+
+  @@unique([userId, ideaId])
+  @@index([userId])
+}
+
+model PriceHistory {
+  id        String   @id @default(cuid())
+  ideaId    String
+  idea      Idea     @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  price     Float
+  timestamp DateTime @default(now())
+
+  @@index([ideaId])
+  @@index([timestamp])
+}
