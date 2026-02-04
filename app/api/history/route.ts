@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
+import { dateRangeSchema, paginationSchema } from '@/lib/validation'
+
+const historyQuerySchema = z
+  .object({
+    filter: z.enum(['gains', 'losses']).optional(),
+  })
+  .merge(paginationSchema)
+  .merge(dateRangeSchema)
 
 export async function GET(req: Request) {
   const session = await getSession()
@@ -9,38 +19,95 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url)
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
-  const filter = searchParams.get('filter') // 'gains' | 'losses' | null
-  const from = searchParams.get('from')
-  const to = searchParams.get('to')
+  const parsed = historyQuerySchema.safeParse({
+    page: searchParams.get('page'),
+    limit: searchParams.get('limit'),
+    filter: searchParams.get('filter') || undefined,
+    from: searchParams.get('from') || undefined,
+    to: searchParams.get('to') || undefined,
+  })
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Invalid query parameters' },
+      { status: 400 }
+    )
+  }
+
+  const { page, limit, filter, from, to } = parsed.data
 
   try {
-    const where: Record<string, unknown> = {}
+    const baseConditions: Prisma.Sql[] = []
 
-    if (from || to) {
-      where.generatedDate = {}
-      if (from) (where.generatedDate as Record<string, unknown>).gte = new Date(from)
-      if (to) (where.generatedDate as Record<string, unknown>).lte = new Date(to)
+    if (from) {
+      baseConditions.push(Prisma.sql`"generatedDate" >= ${from}`)
+    }
+    if (to) {
+      baseConditions.push(Prisma.sql`"generatedDate" <= ${to}`)
     }
 
-    const allIdeas = await prisma.idea.findMany({
-      where,
-      orderBy: { generatedDate: 'desc' },
-    })
-
-    // Apply gains/losses filter in memory (requires price comparison)
-    let filtered = allIdeas
+    const filterConditions = [...baseConditions]
     if (filter === 'gains') {
-      filtered = allIdeas.filter((i) => i.currentPrice > i.initialPrice)
+      filterConditions.push(Prisma.sql`"currentPrice" > "initialPrice"`)
     } else if (filter === 'losses') {
-      filtered = allIdeas.filter((i) => i.currentPrice <= i.initialPrice)
+      filterConditions.push(Prisma.sql`"currentPrice" <= "initialPrice"`)
     }
 
-    const total = filtered.length
-    const paginated = filtered.slice((page - 1) * limit, page * limit)
+    const baseWhere =
+      baseConditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(baseConditions, ' AND ')}`
+        : Prisma.empty
 
-    const ideas = paginated.map((idea) => ({
+    const filteredWhere =
+      filterConditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(filterConditions, ' AND ')}`
+        : Prisma.empty
+
+    const offset = (page - 1) * limit
+
+    const [rows, totalRows] = await Promise.all([
+      prisma.$queryRaw<
+        Array<{
+          id: string
+          ticker: string
+          companyName: string
+          oneLiner: string
+          riskLevel: string
+          confidenceScore: number
+          signals: unknown
+          initialPrice: number
+          currentPrice: number
+          currency: string
+          generatedDate: Date
+        }>
+      >(Prisma.sql`
+        SELECT
+          id,
+          ticker,
+          "companyName",
+          "oneLiner",
+          "riskLevel",
+          "confidenceScore",
+          signals,
+          "initialPrice",
+          "currentPrice",
+          currency,
+          "generatedDate"
+        FROM "Idea"
+        ${filteredWhere}
+        ORDER BY "generatedDate" DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `),
+      prisma.$queryRaw<Array<{ count: number }>>(Prisma.sql`
+        SELECT COUNT(*)::int AS count
+        FROM "Idea"
+        ${filteredWhere}
+      `),
+    ])
+
+    const total = totalRows[0]?.count ?? 0
+
+    const ideas = rows.map((idea) => ({
       id: idea.id,
       ticker: idea.ticker,
       companyName: idea.companyName,
@@ -66,16 +133,29 @@ export async function GET(req: Request) {
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-    const matureIdeas = allIdeas.filter(
-      (i) => i.generatedDate < sevenDaysAgo
-    )
-    const wins = matureIdeas.filter(
-      (i) => i.currentPrice > i.initialPrice
-    )
-    const hitRate =
-      matureIdeas.length > 0
-        ? Math.round((wins.length / matureIdeas.length) * 100)
-        : null
+    const hitConditions = [
+      ...baseConditions,
+      Prisma.sql`"generatedDate" < ${sevenDaysAgo}`,
+    ]
+
+    const hitWhere =
+      hitConditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(hitConditions, ' AND ')}`
+        : Prisma.empty
+
+    const hitRateRows = await prisma.$queryRaw<
+      Array<{ wins: number; total: number }>
+    >(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (WHERE "currentPrice" > "initialPrice")::int AS wins,
+        COUNT(*)::int AS total
+      FROM "Idea"
+      ${hitWhere}
+    `)
+
+    const wins = hitRateRows[0]?.wins ?? 0
+    const hitTotal = hitRateRows[0]?.total ?? 0
+    const hitRate = hitTotal > 0 ? Math.round((wins / hitTotal) * 100) : null
 
     return NextResponse.json({
       ideas,

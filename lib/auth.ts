@@ -75,15 +75,16 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string
-      } else {
-        // Token was invalidated
-        return { ...session, user: { id: '', email: '' } }
       }
       return session
     },
   },
 }
 
-export function getSession() {
-  return getServerSession(authOptions)
+export async function getSession() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return null
+  }
+  return session
 }

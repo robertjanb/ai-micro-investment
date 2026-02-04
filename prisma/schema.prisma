@@ -61,6 +61,12 @@ model Idea {
   @@index([createdAt])
 }
 
+model DailyIdeaBatch {
+  id            String   @id @default(cuid())
+  generatedDate DateTime @unique @db.Date
+  createdAt     DateTime @default(now())
+}
+
 model WatchlistItem {
   id               String   @id @default(cuid())
   visitorSessionId String?

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getIdeaProvider, getPriceProvider } from '@/lib/data-sources'
@@ -22,29 +23,37 @@ export async function GET() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
+    let batchCreated = false
+    try {
+      await prisma.dailyIdeaBatch.create({
+        data: { generatedDate: today },
+      })
+      batchCreated = true
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        batchCreated = false
+      } else {
+        throw error
+      }
+    }
+
     // Check if we already have ideas for today
     let ideas = await prisma.idea.findMany({
-      where: {
-        generatedDate: today,
-      },
+      where: { generatedDate: today },
       orderBy: { confidenceScore: 'desc' },
     })
 
     // Generate new ideas if none exist for today
-    if (ideas.length === 0) {
-      const ideaProvider = getIdeaProvider()
-      const generatedIdeas = await ideaProvider.generateDailyIdeas(
-        3 + Math.floor(Math.random() * 3) // 3-5 ideas
-      )
+    if (ideas.length === 0 && batchCreated) {
+      try {
+        const ideaProvider = getIdeaProvider()
+        const generatedIdeas = await ideaProvider.generateDailyIdeas(
+          3 + Math.floor(Math.random() * 3) // 3-5 ideas
+        )
 
-      // Re-check to prevent race condition (another request may have inserted)
-      const recheck = await prisma.idea.count({ where: { generatedDate: today } })
-      if (recheck > 0) {
-        ideas = await prisma.idea.findMany({
-          where: { generatedDate: today },
-          orderBy: { confidenceScore: 'desc' },
-        })
-      } else {
         ideas = await Promise.all(
           generatedIdeas.map((idea) =>
             prisma.idea.create({
@@ -77,6 +86,19 @@ export async function GET() {
             })
           )
         )
+      } catch (error) {
+        await prisma.dailyIdeaBatch.delete({
+          where: { generatedDate: today },
+        })
+        throw error
+      }
+    } else if (ideas.length === 0) {
+      for (let attempt = 0; attempt < 3 && ideas.length === 0; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        ideas = await prisma.idea.findMany({
+          where: { generatedDate: today },
+          orderBy: { confidenceScore: 'desc' },
+        })
       }
     } else {
       // Update prices for existing ideas
