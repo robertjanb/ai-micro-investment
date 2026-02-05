@@ -33,7 +33,9 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isLookingUp, setIsLookingUp] = useState(false)
   const [error, setError] = useState('')
+  const [quoteCurrency, setQuoteCurrency] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadIdeas() {
@@ -57,11 +59,44 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
         setTicker(idea.ticker)
         setCompanyName(idea.companyName)
         setPurchasePrice(idea.currentPrice.toFixed(2))
+        setQuoteCurrency(null)
       }
     } else if (mode === 'manual') {
       setSelectedIdeaId('')
+      setQuoteCurrency(null)
     }
   }, [mode, selectedIdeaId, ideas])
+
+  async function handleLookup() {
+    if (!ticker.trim()) {
+      setError('Enter a ticker to look up')
+      return
+    }
+
+    setIsLookingUp(true)
+    setError('')
+
+    try {
+      const res = await fetch(`/api/portfolio/quote?ticker=${encodeURIComponent(ticker.trim())}`)
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Ticker not found')
+        return
+      }
+
+      const data = await res.json()
+      const quote = data.quote
+
+      setCompanyName(quote.name)
+      setPurchasePrice(quote.price.toFixed(2))
+      setQuoteCurrency(quote.currency)
+    } catch (err) {
+      console.error('Lookup failed:', err)
+      setError('Failed to look up ticker')
+    } finally {
+      setIsLookingUp(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -157,20 +192,30 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
           <>
             <div>
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                Ticker
+                Ticker (e.g. AAPL, MSFT, GOOGL)
               </label>
-              <input
-                type="text"
-                value={ticker}
-                onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
-                placeholder="ABCD"
-                maxLength={10}
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
+                  placeholder="AAPL"
+                  maxLength={10}
+                />
+                <button
+                  type="button"
+                  onClick={handleLookup}
+                  disabled={isLookingUp || !ticker.trim()}
+                  className="px-3 py-2 text-xs uppercase tracking-[0.1em] bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
+                >
+                  {isLookingUp ? 'Looking up...' : 'Lookup'}
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                Company Name (optional)
+                Company Name {quoteCurrency ? '' : '(optional)'}
               </label>
               <input
                 type="text"
@@ -199,7 +244,7 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
           </div>
           <div>
             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-              Purchase Price (&euro;)
+              Purchase Price {quoteCurrency ? `(${quoteCurrency})` : ''}
             </label>
             <input
               type="number"
@@ -208,7 +253,7 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               step="0.01"
               min="0.01"
-              placeholder={mode === 'idea' ? 'Auto-filled' : '0.00'}
+              placeholder={mode === 'idea' ? 'Auto-filled' : 'Use Lookup or enter manually'}
             />
           </div>
         </div>
