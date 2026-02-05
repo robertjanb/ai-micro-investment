@@ -1,5 +1,8 @@
 import type { PriceProvider, PricePoint } from '../types'
-import yahooFinance from 'yahoo-finance2'
+import YahooFinance from 'yahoo-finance2'
+
+// Create Yahoo Finance instance (required in v3)
+const yahooFinance = new YahooFinance()
 
 // Type for Yahoo Finance quote response (partial)
 interface YahooQuote {
