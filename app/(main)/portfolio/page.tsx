@@ -44,23 +44,52 @@ export default function PortfolioPage() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingRecs, setIsLoadingRecs] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [error, setError] = useState('')
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
 
-  const loadPortfolio = useCallback(async () => {
+  const refreshPrices = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      const res = await fetch('/api/portfolio/update-prices', { method: 'POST' })
+      if (res.ok) {
+        // Reload portfolio to get updated prices
+        const portfolioRes = await fetch('/api/portfolio')
+        if (portfolioRes.ok) {
+          const data = await portfolioRes.json()
+          setHoldings(data.holdings)
+          setSummary(data.summary)
+          setLastUpdated(data.lastUpdated)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to refresh prices:', err)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [])
+
+  const loadPortfolio = useCallback(async (autoRefreshIfStale = false) => {
     try {
       const res = await fetch('/api/portfolio')
       if (res.ok) {
         const data = await res.json()
         setHoldings(data.holdings)
         setSummary(data.summary)
+        setLastUpdated(data.lastUpdated)
+
+        // Auto-refresh prices if stale and we have holdings
+        if (autoRefreshIfStale && data.pricesStale && data.holdings.length > 0) {
+          refreshPrices()
+        }
       }
     } catch (err) {
       console.error('Failed to load portfolio:', err)
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [refreshPrices])
 
   const loadRecommendations = useCallback(async () => {
     try {
@@ -77,7 +106,7 @@ export default function PortfolioPage() {
   }, [])
 
   useEffect(() => {
-    loadPortfolio()
+    loadPortfolio(true) // Auto-refresh if stale on initial load
     loadRecommendations()
   }, [loadPortfolio, loadRecommendations])
 
@@ -152,16 +181,44 @@ export default function PortfolioPage() {
     )
   }
 
+  const formatLastUpdated = (dateStr: string | null) => {
+    if (!dateStr) return null
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    return date.toLocaleDateString()
+  }
+
   return (
     <div className="space-y-6">
       {summary && summary.holdingCount > 0 && (
-        <PortfolioSummary
-          totalValue={summary.totalValue}
-          totalCost={summary.totalCost}
-          totalGainLoss={summary.totalGainLoss}
-          totalGainLossPercent={summary.totalGainLossPercent}
-          holdingCount={summary.holdingCount}
-        />
+        <div className="space-y-2">
+          <PortfolioSummary
+            totalValue={summary.totalValue}
+            totalCost={summary.totalCost}
+            totalGainLoss={summary.totalGainLoss}
+            totalGainLossPercent={summary.totalGainLossPercent}
+            holdingCount={summary.holdingCount}
+          />
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+            <span>
+              Prices updated: {formatLastUpdated(lastUpdated) || 'never'}
+            </span>
+            <button
+              onClick={refreshPrices}
+              disabled={isRefreshing}
+              className="px-2 py-1 text-xs uppercase tracking-[0.1em] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 disabled:opacity-50"
+            >
+              {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Daily Recommendations */}

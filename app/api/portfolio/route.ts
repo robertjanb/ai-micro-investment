@@ -39,6 +39,15 @@ export async function GET() {
       orderBy: { purchaseDate: 'desc' },
     })
 
+    // Check if prices are stale (older than 1 hour)
+    const ONE_HOUR = 60 * 60 * 1000
+    const now = Date.now()
+
+    // Find oldest update time
+    const oldestUpdate = holdings.length > 0
+      ? holdings.reduce((oldest, h) => h.updatedAt < oldest ? h.updatedAt : oldest, holdings[0].updatedAt)
+      : null
+
     const portfolio = holdings.map((holding) => {
       const gainLoss = (holding.currentPrice - holding.purchasePrice) * holding.quantity
       const gainLossPercent =
@@ -60,8 +69,11 @@ export async function GET() {
         gainLossPercent: Math.round(gainLossPercent * 100) / 100,
         idea: holding.idea,
         createdAt: holding.createdAt,
+        updatedAt: holding.updatedAt,
       }
     })
+
+    const pricesStale = oldestUpdate ? now - oldestUpdate.getTime() > ONE_HOUR : false
 
     // Calculate summary
     const totalValue = portfolio.reduce((sum, h) => sum + h.quantity * h.currentPrice, 0)
@@ -78,6 +90,8 @@ export async function GET() {
         totalGainLossPercent: Math.round(totalGainLossPercent * 100) / 100,
         holdingCount: portfolio.length,
       },
+      pricesStale,
+      lastUpdated: oldestUpdate,
     })
   } catch (error) {
     console.error('Failed to fetch portfolio:', error)

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/portfolio/update-prices?secret=${CRON_SECRET}",
+      "schedule": "0 14 * * 1-5"
+    }
+  ]
+}
