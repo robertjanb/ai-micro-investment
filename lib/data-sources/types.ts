@@ -68,3 +68,46 @@ export interface RecommendationProvider {
     ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>
   ): Promise<RecommendationData[]>
 }
+
+// Real stock data types for RealIdeaProvider
+export interface RealStockData {
+  ticker: string
+  companyName: string
+  price: number
+  priceEur: number
+  currency: string
+  marketCap: number
+  peRatio: number | null
+  fiftyTwoWeekLow: number
+  fiftyTwoWeekHigh: number
+  sector: string
+  industry: string
+  exchange: string
+  recentChange: number
+  dividendYield: number | null
+  description: string
+}
+
+export interface NewsItem {
+  headline: string
+  summary: string
+  source: string
+  datetime: Date
+  url: string
+  sentiment?: 'positive' | 'negative' | 'neutral'
+}
+
+export interface EarningsEvent {
+  ticker: string
+  date: Date
+  epsEstimate: number | null
+  epsActual: number | null
+  revenueEstimate: number | null
+  revenueActual: number | null
+}
+
+export interface EnrichedStockData extends RealStockData {
+  news: NewsItem[]
+  upcomingEarnings: EarningsEvent | null
+  newsSentiment: number | null // -1 to 1 scale
+}

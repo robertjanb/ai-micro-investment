@@ -130,6 +130,101 @@ Guidelines:
 - Return ONLY valid JSON, no additional text`
 }
 
+export interface RealStockDataForPrompt {
+  ticker: string
+  companyName: string
+  price: number
+  priceEur: number
+  currency: string
+  marketCap: number
+  peRatio: number | null
+  fiftyTwoWeekLow: number
+  fiftyTwoWeekHigh: number
+  sector: string
+  industry: string
+  exchange: string
+  recentChange: number
+  dividendYield: number | null
+  description: string
+  newsHeadlines: string[]
+  upcomingEarningsDate: string | null
+  newsSentiment: number | null
+}
+
+export function realStockAnalysisPrompt(stocks: RealStockDataForPrompt[]): string {
+  const stockDescriptions = stocks.map((s) => {
+    const pricePosition = ((s.price - s.fiftyTwoWeekLow) / (s.fiftyTwoWeekHigh - s.fiftyTwoWeekLow) * 100).toFixed(0)
+    const pe = s.peRatio ? s.peRatio.toFixed(1) : 'N/A'
+    const dividend = s.dividendYield ? `${(s.dividendYield * 100).toFixed(2)}%` : 'None'
+    const sentiment = s.newsSentiment !== null
+      ? s.newsSentiment > 0.2 ? 'Positive' : s.newsSentiment < -0.2 ? 'Negative' : 'Neutral'
+      : 'Unknown'
+
+    return `
+## ${s.ticker} - ${s.companyName}
+Exchange: ${s.exchange}
+Sector: ${s.sector} | Industry: ${s.industry}
+
+**Price Data:**
+- Current Price: €${s.priceEur.toFixed(2)} (${s.currency} ${s.price.toFixed(2)})
+- Market Cap: €${(s.marketCap / 1e9).toFixed(2)}B
+- P/E Ratio: ${pe}
+- Dividend Yield: ${dividend}
+- 52-Week Range: ${s.currency} ${s.fiftyTwoWeekLow.toFixed(2)} - ${s.fiftyTwoWeekHigh.toFixed(2)}
+- Position in 52-Week Range: ${pricePosition}%
+- Recent Change: ${s.recentChange >= 0 ? '+' : ''}${s.recentChange.toFixed(2)}%
+
+**Company Description:**
+${s.description.slice(0, 500)}${s.description.length > 500 ? '...' : ''}
+
+**Recent News Headlines:**
+${s.newsHeadlines.length > 0 ? s.newsHeadlines.map((h) => `- ${h}`).join('\n') : '- No recent news'}
+
+**Sentiment:** ${sentiment}
+${s.upcomingEarningsDate ? `**Upcoming Earnings:** ${s.upcomingEarningsDate}` : ''}
+`
+  }).join('\n---\n')
+
+  return `You are a stock analyst creating investment ideas based on REAL market data. Analyze these stocks and create compelling investment theses.
+
+IMPORTANT: These are REAL companies with REAL data. Your analysis should:
+- Reference specific fundamentals (P/E, market cap, etc.)
+- Mention actual sector dynamics and competitive positioning
+- Note any relevant news or upcoming catalysts
+- Be factual and grounded in the data provided
+
+${stockDescriptions}
+
+For each stock, create an investment analysis. Return ONLY valid JSON in this exact format:
+
+{
+  "ideas": [
+    {
+      "ticker": "EXACT_TICKER",
+      "companyName": "Full Company Name",
+      "oneLiner": "One compelling sentence summarizing the investment opportunity",
+      "thesis": "2-3 paragraphs explaining the bull case. Reference specific data points: valuation metrics, market position, catalysts, sector trends. Be specific and factual.",
+      "bearCase": "1-2 paragraphs of genuine risks: valuation concerns, competitive threats, macro headwinds, specific challenges facing the company or sector.",
+      "confidenceScore": 65,
+      "riskLevel": "interesting"
+    }
+  ]
+}
+
+Guidelines:
+- Confidence scores: 50-85 range based on data quality and clarity of thesis
+  - 50-60: Speculative, limited data, uncertain thesis
+  - 60-70: Reasonable thesis with some risks
+  - 70-85: Strong thesis with good fundamentals support
+- Risk levels:
+  - "safe": Large-cap, stable dividend payers, lower volatility
+  - "interesting": Mid-cap growth, sector leaders, moderate risk/reward
+  - "spicy": Small-cap, high growth, volatile, binary outcomes
+- Use the EXACT ticker symbol provided (e.g., "ASML.AS" not "ASML")
+- Each thesis should be distinct and reference the specific data provided
+- Bear cases should identify real, material risks - not token objections`
+}
+
 export function contextualizePortfolioPrompt(
   holdings: PortfolioHolding[]
 ): string {
