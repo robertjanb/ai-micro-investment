@@ -44,6 +44,7 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isFirstVisit, setIsFirstVisit] = useState(false)
   const [nudgeMessage, setNudgeMessage] = useState<string | null>(null)
+  const [ideasView, setIdeasView] = useState<'compact' | 'cards'>('compact')
 
   const loadData = useCallback(async () => {
     try {
@@ -122,6 +123,111 @@ export default function ChatPage() {
     "What's the biggest red flag today?",
   ]
 
+  const riskBadgeStyles = {
+    safe: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    interesting: 'bg-amber-50 text-amber-700 border-amber-200',
+    spicy: 'bg-rose-50 text-rose-700 border-rose-200',
+  } as const
+
+  const renderViewToggle = () => (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setIdeasView('compact')}
+        className={`text-[10px] uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${
+          ideasView === 'compact'
+            ? 'border-slate-900 text-slate-900 bg-white'
+            : 'border-slate-200 text-slate-500 bg-white/70'
+        }`}
+      >
+        Compact
+      </button>
+      <button
+        type="button"
+        onClick={() => setIdeasView('cards')}
+        className={`text-[10px] uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${
+          ideasView === 'cards'
+            ? 'border-slate-900 text-slate-900 bg-white'
+            : 'border-slate-200 text-slate-500 bg-white/70'
+        }`}
+      >
+        Cards
+      </button>
+    </div>
+  )
+
+  const renderIdeas = (showWatchlistActions: boolean) => {
+    if (ideasView === 'compact') {
+      return (
+        <div className="space-y-2">
+          {ideas.map((idea) => (
+            <div
+              key={idea.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-semibold text-slate-900">
+                    {idea.ticker}
+                  </span>
+                  <span
+                    className={`text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 rounded-full border ${riskBadgeStyles[idea.riskLevel]}`}
+                  >
+                    {idea.riskLevel}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {idea.confidenceScore}%
+                  </span>
+                </div>
+                <div className="text-xs text-slate-600 truncate">
+                  {idea.companyName}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="font-mono text-xs text-slate-700">
+                  {idea.currency === 'EUR' ? '\u20AC' : '$'}
+                  {idea.currentPrice.toFixed(2)}
+                </div>
+                {showWatchlistActions && (
+                  <button
+                    onClick={() => handleAddToWatchlist(idea.id)}
+                    disabled={watchlistIds.has(idea.id)}
+                    className="mt-1 text-[10px] uppercase tracking-[0.2em] text-teal-700 disabled:opacity-50"
+                  >
+                    {watchlistIds.has(idea.id) ? 'Saved' : 'Add'}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-3">
+        {ideas.map((idea) => (
+          <IdeaCard
+            key={idea.id}
+            id={idea.id}
+            ticker={idea.ticker}
+            companyName={idea.companyName}
+            oneLiner={idea.oneLiner}
+            thesis={idea.thesis}
+            bearCase={idea.bearCase}
+            riskLevel={idea.riskLevel}
+            confidenceScore={idea.confidenceScore}
+            signals={idea.signals}
+            currentPrice={idea.currentPrice}
+            currency={idea.currency}
+            onAddToWatchlist={handleAddToWatchlist}
+            isOnWatchlist={watchlistIds.has(idea.id)}
+          />
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="app-card p-6">
@@ -164,36 +270,46 @@ export default function ChatPage() {
           <div className="app-card p-4">
             <ChatInterface quickPrompts={quickPrompts} />
           </div>
+
+          {ideas.length > 0 && (
+            <div className="lg:hidden app-card p-4">
+              <details className="group">
+                <summary className="flex items-center justify-between cursor-pointer list-none">
+                  <div className="space-y-1">
+                    <h2 className="font-display text-sm text-slate-700">
+                      Today&apos;s Ideas
+                    </h2>
+                    <span className="text-xs text-slate-500">
+                      Tap to explore the list
+                    </span>
+                  </div>
+                  <span className="app-pill">{ideas.length} ideas</span>
+                </summary>
+                <div className="mt-4 space-y-3">
+                  {renderViewToggle()}
+                  {renderIdeas(true)}
+                </div>
+              </details>
+            </div>
+          )}
         </section>
 
         {ideas.length > 0 && (
-          <aside className="space-y-4">
+          <aside className="hidden lg:block space-y-4">
             <div className="app-card p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-sm text-slate-700">
-                  Today&apos;s Ideas
-                </h2>
-                <span className="app-pill">{ideas.length} ideas</span>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-sm text-slate-700">
+                    Today&apos;s Ideas
+                  </h2>
+                  <span className="text-xs text-slate-500">
+                    {ideas.length} ideas
+                  </span>
+                </div>
+                {renderViewToggle()}
               </div>
-              <div className="mt-4 space-y-3">
-                {ideas.map((idea) => (
-                  <IdeaCard
-                    key={idea.id}
-                    id={idea.id}
-                    ticker={idea.ticker}
-                    companyName={idea.companyName}
-                    oneLiner={idea.oneLiner}
-                    thesis={idea.thesis}
-                    bearCase={idea.bearCase}
-                    riskLevel={idea.riskLevel}
-                    confidenceScore={idea.confidenceScore}
-                    signals={idea.signals}
-                    currentPrice={idea.currentPrice}
-                    currency={idea.currency}
-                    onAddToWatchlist={handleAddToWatchlist}
-                    isOnWatchlist={watchlistIds.has(idea.id)}
-                  />
-                ))}
+              <div className="mt-4">
+                {renderIdeas(true)}
               </div>
             </div>
           </aside>

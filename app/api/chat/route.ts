@@ -3,7 +3,7 @@ import { generateText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { CONVERSATION_SYSTEM_PROMPT, contextualizeIdeasPrompt } from '@/lib/ai/prompts'
+import { CONVERSATION_SYSTEM_PROMPT, contextualizeIdeasPrompt, contextualizePortfolioPrompt } from '@/lib/ai/prompts'
 import { truncateConversation } from '@/lib/ai/truncate-conversation'
 import { streamingChatSchema } from '@/lib/validation'
 import { checkRateLimit, CHAT_RATE_LIMIT } from '@/lib/rate-limit'
@@ -11,8 +11,6 @@ import { checkRateLimit, CHAT_RATE_LIMIT } from '@/lib/rate-limit'
 const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY ?? '',
-  // OpenRouter is OpenAI-compatible (chat completions), not Responses API.
-  compatibility: 'compatible',
   headers: {
     'HTTP-Referer': process.env.NEXTAUTH_URL || 'http://localhost:3000',
     'X-Title': 'AI Micro-Investment Companion',
@@ -97,11 +95,37 @@ export async function POST(req: Request) {
       select: { ticker: true, companyName: true, oneLiner: true },
     })
 
-    // Build system prompt with idea context
+    // Get user's portfolio holdings for context
+    const userHoldings = await prisma.holding.findMany({
+      where: { userId: session.user.id },
+      select: {
+        ticker: true,
+        companyName: true,
+        quantity: true,
+        purchasePrice: true,
+        currentPrice: true,
+      },
+    })
+
+    // Build system prompt with idea and portfolio context
     let systemPrompt = CONVERSATION_SYSTEM_PROMPT
     if (todaysIdeas.length > 0) {
       systemPrompt += contextualizeIdeasPrompt(todaysIdeas)
     }
+
+    // Add portfolio context
+    const portfolioData = userHoldings.map((h) => ({
+      ticker: h.ticker,
+      companyName: h.companyName,
+      quantity: h.quantity,
+      purchasePrice: h.purchasePrice,
+      currentPrice: h.currentPrice,
+      gainLoss: (h.currentPrice - h.purchasePrice) * h.quantity,
+      gainLossPercent: h.purchasePrice > 0
+        ? ((h.currentPrice - h.purchasePrice) / h.purchasePrice) * 100
+        : 0,
+    }))
+    systemPrompt += contextualizePortfolioPrompt(portfolioData)
 
     // Truncate conversation to fit context
     const truncated = truncateConversation(history, systemPrompt.length)

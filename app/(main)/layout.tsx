@@ -36,6 +36,12 @@ export default async function MainLayout({
                     Chat
                   </Link>
                   <Link
+                    href="/portfolio"
+                    className="px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-600 hover:text-slate-900 rounded-full border border-slate-200 bg-white/70"
+                  >
+                    Portfolio
+                  </Link>
+                  <Link
                     href="/watchlist"
                     className="px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-600 hover:text-slate-900 rounded-full border border-slate-200 bg-white/70"
                   >
@@ -72,6 +78,12 @@ export default async function MainLayout({
               className="text-xs uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 px-3 py-2"
             >
               Chat
+            </Link>
+            <Link
+              href="/portfolio"
+              className="text-xs uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 px-3 py-2"
+            >
+              Portfolio
             </Link>
             <Link
               href="/watchlist"

@@ -66,3 +66,94 @@ export function contextualizeIdeasPrompt(
 
   return `\n\nToday's investment ideas for reference:\n${ideaList}\n\nIf the user asks about any of these, provide detailed analysis based on the idea data.`
 }
+
+export interface PortfolioHolding {
+  ticker: string
+  companyName: string | null
+  quantity: number
+  purchasePrice: number
+  currentPrice: number
+  gainLoss: number
+  gainLossPercent: number
+}
+
+export function portfolioAnalysisPrompt(
+  holdings: PortfolioHolding[],
+  ideas: Array<{ ticker: string; companyName: string; signals: { hiring: boolean; earnings: boolean; regulatory: boolean; supplyChain: boolean }; confidenceScore: number }>
+): string {
+  const holdingsText = holdings
+    .map((h) => {
+      const name = h.companyName || h.ticker
+      const direction = h.gainLossPercent >= 0 ? '+' : ''
+      return `- ${h.ticker} (${name}): ${h.quantity} shares @ €${h.purchasePrice.toFixed(2)}, now €${h.currentPrice.toFixed(2)} (${direction}${h.gainLossPercent.toFixed(1)}%)`
+    })
+    .join('\n')
+
+  const ideasText = ideas
+    .map((i) => {
+      const signals = Object.entries(i.signals)
+        .filter(([, v]) => v)
+        .map(([k]) => k)
+        .join(', ')
+      return `- ${i.ticker} (${i.companyName}): confidence ${i.confidenceScore}%, signals: ${signals || 'none'}`
+    })
+    .join('\n')
+
+  return `Analyze the following portfolio and today's ideas to generate buy/sell/hold recommendations.
+
+Current Holdings:
+${holdingsText || 'No current holdings'}
+
+Today's Ideas:
+${ideasText || 'No new ideas today'}
+
+Generate recommendations as JSON in this exact format:
+{
+  "recommendations": [
+    {
+      "ticker": "ABCD",
+      "action": "hold",
+      "reasoning": "Brief explanation of the recommendation",
+      "confidence": 72
+    }
+  ]
+}
+
+Guidelines:
+- For each holding, provide a hold/sell recommendation based on performance and market conditions
+- If holdings are significantly up (>20%), consider suggesting partial profit-taking
+- If holdings are significantly down (>15%), evaluate whether the thesis still holds
+- From today's ideas, suggest at most 2 buy candidates that aren't already held
+- Only suggest buys for ideas with confidence >= 65%
+- Confidence scores should be 50-90
+- Keep reasoning concise but substantive
+- Return ONLY valid JSON, no additional text`
+}
+
+export function contextualizePortfolioPrompt(
+  holdings: PortfolioHolding[]
+): string {
+  if (holdings.length === 0) {
+    return '\n\nThe user has no current portfolio holdings.'
+  }
+
+  const totalValue = holdings.reduce((sum, h) => sum + h.quantity * h.currentPrice, 0)
+  const totalCost = holdings.reduce((sum, h) => sum + h.quantity * h.purchasePrice, 0)
+  const totalReturn = totalValue - totalCost
+  const totalReturnPercent = totalCost > 0 ? (totalReturn / totalCost) * 100 : 0
+
+  const holdingsText = holdings
+    .map((h) => {
+      const name = h.companyName || h.ticker
+      const direction = h.gainLossPercent >= 0 ? '+' : ''
+      return `- ${h.ticker} (${name}): ${h.quantity} shares, ${direction}${h.gainLossPercent.toFixed(1)}%`
+    })
+    .join('\n')
+
+  const direction = totalReturnPercent >= 0 ? '+' : ''
+
+  return `\n\nUser's Portfolio (${holdings.length} holdings, ${direction}${totalReturnPercent.toFixed(1)}% overall):
+${holdingsText}
+
+When the user asks about their portfolio or specific holdings, reference this data. Provide personalized advice based on their actual positions.`
+}

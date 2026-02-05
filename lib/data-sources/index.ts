@@ -1,13 +1,15 @@
-import type { IdeaProvider, PriceProvider, SignalProvider } from './types'
+import type { IdeaProvider, PriceProvider, SignalProvider, RecommendationProvider } from './types'
 import { MockIdeaProvider } from './mock/idea-provider'
 import { MockPriceProvider } from './mock/price-provider'
 import { MockSignalProvider } from './mock/signal-provider'
+import { MockRecommendationProvider } from './mock/recommendation-provider'
 
 const dataSource = process.env.DATA_SOURCE || 'mock'
 
 let ideaProviderInstance: IdeaProvider | null = null
 let priceProviderInstance: PriceProvider | null = null
 let signalProviderInstance: SignalProvider | null = null
+let recommendationProviderInstance: RecommendationProvider | null = null
 
 export function getIdeaProvider(): IdeaProvider {
   if (!ideaProviderInstance) {
@@ -37,4 +39,14 @@ export function getSignalProvider(): SignalProvider {
     signalProviderInstance = new MockSignalProvider()
   }
   return signalProviderInstance
+}
+
+export function getRecommendationProvider(): RecommendationProvider {
+  if (!recommendationProviderInstance) {
+    if (dataSource === 'real') {
+      throw new Error('Real data provider not yet implemented')
+    }
+    recommendationProviderInstance = new MockRecommendationProvider()
+  }
+  return recommendationProviderInstance
 }

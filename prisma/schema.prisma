@@ -8,16 +8,18 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
-  passwordHash   String
-  resetToken     String?
-  resetTokenExp  DateTime?
-  tokenVersion   Int             @default(0)
-  conversations  Conversation[]
-  watchlist      WatchlistItem[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id              String           @id @default(cuid())
+  email           String           @unique
+  passwordHash    String
+  resetToken      String?
+  resetTokenExp   DateTime?
+  tokenVersion    Int              @default(0)
+  conversations   Conversation[]
+  watchlist       WatchlistItem[]
+  holdings        Holding[]
+  recommendations Recommendation[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model Conversation {
@@ -54,6 +56,7 @@ model Idea {
   generatedDate   DateTime        @default(now()) @db.Date
   priceHistory    PriceHistory[]
   watchlistItems  WatchlistItem[]
+  holdings        Holding[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -90,4 +93,43 @@ model PriceHistory {
 
   @@index([ideaId])
   @@index([timestamp])
+}
+
+model Holding {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ideaId        String?
+  idea          Idea?            @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  ticker        String
+  companyName   String?
+  quantity      Float
+  purchasePrice Float
+  purchaseDate  DateTime         @db.Date
+  currentPrice  Float
+  notes         String?          @db.Text
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  recommendations Recommendation[]
+
+  @@unique([userId, ticker, purchaseDate])
+  @@index([userId])
+}
+
+model Recommendation {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdingId   String?
+  holding     Holding? @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+  ticker      String
+  action      String   // 'buy' | 'sell' | 'hold'
+  reasoning   String   @db.Text
+  confidence  Int
+  generatedAt DateTime @default(now()) @db.Date
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, ticker, generatedAt])
+  @@index([userId, generatedAt])
 }

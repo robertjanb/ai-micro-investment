@@ -143,6 +143,11 @@ export function ChatInterface({
   return (
     <div className="flex flex-col min-h-[520px] h-[calc(100vh-22rem)] min-h-0">
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-4 pb-4">
+        {messages.length === 0 && !isLoading && (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 p-4 text-sm text-slate-600">
+            Ask about an idea, compare tickers, or request a bear case.
+          </div>
+        )}
         {messages.map((msg) => (
           <Message key={msg.id} role={msg.role} content={msg.content} />
         ))}
@@ -162,7 +167,7 @@ export function ChatInterface({
       )}
 
       {quickPrompts.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 mb-2">
           {quickPrompts.map((prompt) => (
             <button
               key={prompt}
@@ -171,7 +176,7 @@ export function ChatInterface({
                 setInput(prompt)
                 inputRef.current?.focus()
               }}
-              className="text-xs text-slate-600 border border-slate-200 rounded-full px-3 py-1 bg-white hover:border-slate-300 hover:text-slate-900"
+              className="shrink-0 text-xs text-slate-600 border border-slate-200 rounded-full px-3 py-1 bg-white hover:border-slate-300 hover:text-slate-900"
             >
               {prompt}
             </button>

@@ -42,3 +42,29 @@ export interface PriceProvider {
 export interface SignalProvider {
   getSignals(ticker: string): Promise<Signals>
 }
+
+export interface HoldingData {
+  id: string
+  ticker: string
+  companyName: string | null
+  quantity: number
+  purchasePrice: number
+  currentPrice: number
+  purchaseDate: Date
+  gainLoss: number
+  gainLossPercent: number
+}
+
+export interface RecommendationData {
+  ticker: string
+  action: 'buy' | 'sell' | 'hold'
+  reasoning: string
+  confidence: number
+}
+
+export interface RecommendationProvider {
+  generateRecommendations(
+    holdings: HoldingData[],
+    ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>
+  ): Promise<RecommendationData[]>
+}
