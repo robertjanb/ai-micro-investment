@@ -7,6 +7,19 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      multi_arch:
+        description: "Build both amd64 and arm64"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -15,11 +28,14 @@ permissions:
 jobs:
   docker:
     runs-on: ubuntu-latest
+    env:
+      MULTI_ARCH: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.multi_arch == 'true') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up QEMU
+        if: env.MULTI_ARCH == 'true'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -49,6 +65,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.MULTI_ARCH == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
