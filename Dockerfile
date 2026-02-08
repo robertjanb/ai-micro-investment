@@ -20,6 +20,7 @@ WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN mkdir -p /app/public
 
 # Generate Prisma client (needed for build)
 RUN pnpm prisma generate
