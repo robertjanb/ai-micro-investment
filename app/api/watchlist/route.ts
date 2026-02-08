@@ -29,6 +29,11 @@ export async function GET() {
             signals: true,
             currentPrice: true,
             currency: true,
+            priceHistory: {
+              orderBy: { timestamp: 'asc' },
+              take: 30,
+              select: { price: true },
+            },
           },
         },
       },
@@ -52,6 +57,8 @@ export async function GET() {
             ((item.idea.currentPrice - item.addedPrice) / item.addedPrice) * 10000
           ) / 100
         : 0,
+      changeAbsolute: Math.round((item.idea.currentPrice - item.addedPrice) * 100) / 100,
+      priceHistory: item.idea.priceHistory.map((p) => p.price),
       addedAt: item.addedAt,
     }))
 

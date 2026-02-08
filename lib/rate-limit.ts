@@ -58,3 +58,13 @@ export const IDEAS_RATE_LIMIT: RateLimitConfig = {
   maxRequests: 60,
   windowMs: 60000,
 }
+
+export const PORTFOLIO_QUOTE_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 30,
+  windowMs: 60000,
+}
+
+export const PORTFOLIO_REFRESH_RATE_LIMIT: RateLimitConfig = {
+  maxRequests: 6,
+  windowMs: 60000,
+}

@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { YahooPriceProvider } from '@/lib/data-sources'
+import { checkRateLimit, PORTFOLIO_REFRESH_RATE_LIMIT } from '@/lib/rate-limit'
 
 const priceProvider = new YahooPriceProvider()
+const CRON_JOB_NAME = 'portfolio-price-update'
+const MIN_REFRESH_MS = 5 * 60 * 1000
 
 // Update prices for a specific user's holdings
 export async function POST(req: Request) {
@@ -13,6 +17,15 @@ export async function POST(req: Request) {
   }
 
   try {
+    const rateCheck = checkRateLimit(`portfolio:refresh:${session.user.id}`, PORTFOLIO_REFRESH_RATE_LIMIT)
+    if (!rateCheck.allowed) {
+      const retryAfterSeconds = Math.ceil((rateCheck.resetAt - Date.now()) / 1000)
+      return NextResponse.json(
+        { error: 'Too many refresh requests. Please wait a moment.' },
+        { status: 429, headers: { 'Retry-After': retryAfterSeconds.toString() } }
+      )
+    }
+
     const result = await updateUserHoldingPrices(session.user.id)
     return NextResponse.json(result)
   } catch (error) {
@@ -30,6 +43,7 @@ export async function GET(req: Request) {
   // Allow authenticated users or cron with secret
   const session = await getSession()
   const isValidCron = cronSecret && cronSecret === process.env.CRON_SECRET
+  const shouldRecordCron = Boolean(isValidCron && !session)
 
   if (!session && !isValidCron) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -49,11 +63,27 @@ export async function GET(req: Request) {
 
     let totalUpdated = 0
     let totalFailed = 0
+    let totalSkipped = 0
 
     for (const user of users) {
       const result = await updateUserHoldingPrices(user.id)
       totalUpdated += result.updated
       totalFailed += result.failed
+      if (result.skipped) {
+        totalSkipped += 1
+      }
+    }
+
+    if (shouldRecordCron) {
+      await recordCronStatus({
+        success: true,
+        summary: {
+          usersProcessed: users.length,
+          totalUpdated,
+          totalFailed,
+          totalSkipped,
+        },
+      })
     }
 
     return NextResponse.json({
@@ -61,9 +91,16 @@ export async function GET(req: Request) {
       usersProcessed: users.length,
       totalUpdated,
       totalFailed,
+      totalSkipped,
     })
   } catch (error) {
     console.error('Cron price update failed:', error)
+    if (shouldRecordCron) {
+      await recordCronStatus({
+        success: false,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
     return NextResponse.json({ error: 'Failed to update prices' }, { status: 500 })
   }
 }
@@ -75,7 +112,22 @@ async function updateUserHoldingPrices(userId: string) {
   })
 
   if (holdings.length === 0) {
-    return { updated: 0, failed: 0, holdings: [] }
+    return { updated: 0, failed: 0, holdings: [], skipped: false }
+  }
+
+  const latestUpdate = holdings.reduce(
+    (latest, holding) => (holding.updatedAt > latest ? holding.updatedAt : latest),
+    holdings[0].updatedAt
+  )
+
+  if (Date.now() - latestUpdate.getTime() < MIN_REFRESH_MS) {
+    return {
+      updated: 0,
+      failed: 0,
+      holdings: [],
+      skipped: true,
+      skippedReason: 'Recently updated',
+    }
   }
 
   // Get unique tickers
@@ -128,5 +180,37 @@ async function updateUserHoldingPrices(userId: string) {
     }
   }
 
-  return { updated, failed, holdings: updatedHoldings }
+  return { updated, failed, holdings: updatedHoldings, skipped: false }
+}
+
+async function recordCronStatus({
+  success,
+  summary,
+  errorMessage,
+}: {
+  success: boolean
+  summary?: Record<string, unknown>
+  errorMessage?: string
+}) {
+  try {
+    const now = new Date()
+    await prisma.cronJobStatus.upsert({
+      where: { name: CRON_JOB_NAME },
+      update: {
+        lastRunAt: now,
+        lastSuccessAt: success ? now : undefined,
+        lastError: success ? null : errorMessage || 'Unknown error',
+        lastSummary: (summary as Prisma.InputJsonValue) ?? undefined,
+      },
+      create: {
+        name: CRON_JOB_NAME,
+        lastRunAt: now,
+        lastSuccessAt: success ? now : null,
+        lastError: success ? null : errorMessage || 'Unknown error',
+        lastSummary: (summary as Prisma.InputJsonValue) ?? undefined,
+      },
+    })
+  } catch (error) {
+    console.error('Failed to record cron status:', error)
+  }
 }

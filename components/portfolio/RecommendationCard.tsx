@@ -11,21 +11,21 @@ interface RecommendationCardProps {
 
 const ACTION_STYLES = {
   buy: {
-    bg: 'bg-emerald-50 dark:bg-emerald-900/20',
-    border: 'border-emerald-200 dark:border-emerald-800',
-    badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300',
+    bg: 'bg-emerald-50',
+    ring: 'ring-1 ring-emerald-200',
+    badge: 'bg-emerald-100 text-emerald-700',
     label: 'Buy',
   },
   sell: {
-    bg: 'bg-rose-50 dark:bg-rose-900/20',
-    border: 'border-rose-200 dark:border-rose-800',
-    badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300',
+    bg: 'bg-rose-50',
+    ring: 'ring-1 ring-rose-200',
+    badge: 'bg-rose-100 text-rose-700',
     label: 'Sell',
   },
   hold: {
-    bg: 'bg-amber-50 dark:bg-amber-900/20',
-    border: 'border-amber-200 dark:border-amber-800',
-    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
+    bg: 'bg-amber-50',
+    ring: 'ring-1 ring-amber-200',
+    badge: 'bg-amber-100 text-amber-700',
     label: 'Hold',
   },
 }
@@ -42,32 +42,32 @@ export function RecommendationCard({
   const isNewBuy = action === 'buy' && !holdingId
 
   return (
-    <div className={`${styles.bg} border ${styles.border} rounded-lg p-4`}>
+    <div className={`app-card p-4 ${styles.bg} ${styles.ring}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <span className={`text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 rounded-full ${styles.badge}`}>
               {styles.label}
             </span>
-            <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+            <span className="font-mono text-sm font-semibold text-slate-900">
               {ticker}
             </span>
             {companyName && (
-              <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
+              <span className="text-sm text-slate-500 truncate">
                 {companyName}
               </span>
             )}
             {isNewBuy && (
-              <span className="text-[10px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+              <span className="text-[10px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
                 New
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-700 dark:text-gray-300">{reasoning}</p>
+          <p className="text-sm text-slate-700">{reasoning}</p>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Confidence</div>
-          <div className="font-mono text-lg font-semibold text-gray-900 dark:text-white">
+          <div className="text-xs text-slate-500 mb-1">Confidence</div>
+          <div className="font-mono text-lg font-semibold text-slate-900">
             {confidence}%
           </div>
         </div>

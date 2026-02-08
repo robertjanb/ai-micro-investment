@@ -86,6 +86,10 @@ export interface RealStockData {
   recentChange: number
   dividendYield: number | null
   description: string
+  totalRevenue: number | null
+  profitMargins: number | null
+  totalDebt: number | null
+  currentRatio: number | null
 }
 
 export interface NewsItem {
@@ -110,4 +114,5 @@ export interface EnrichedStockData extends RealStockData {
   news: NewsItem[]
   upcomingEarnings: EarningsEvent | null
   newsSentiment: number | null // -1 to 1 scale
+  sectorAverageSentiment: number | null
 }

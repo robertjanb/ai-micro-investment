@@ -147,8 +147,31 @@ export interface RealStockDataForPrompt {
   dividendYield: number | null
   description: string
   newsHeadlines: string[]
+  newsSummaries: string[]
   upcomingEarningsDate: string | null
   newsSentiment: number | null
+  totalRevenue: number | null
+  profitMargins: number | null
+  totalDebt: number | null
+  currentRatio: number | null
+  epsEstimate: number | null
+  revenueEstimate: number | null
+  sectorAverageSentiment: number | null
+}
+
+function formatLargeNumber(n: number | null): string {
+  if (n === null) return 'N/A'
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(0)}M`
+  return `$${n.toFixed(0)}`
+}
+
+function formatSentimentLabel(value: number | null): string {
+  if (value === null) return 'Unknown'
+  if (value > 0.2) return 'Positive'
+  if (value < -0.2) return 'Negative'
+  return 'Neutral'
 }
 
 export function realStockAnalysisPrompt(stocks: RealStockDataForPrompt[]): string {
@@ -156,9 +179,23 @@ export function realStockAnalysisPrompt(stocks: RealStockDataForPrompt[]): strin
     const pricePosition = ((s.price - s.fiftyTwoWeekLow) / (s.fiftyTwoWeekHigh - s.fiftyTwoWeekLow) * 100).toFixed(0)
     const pe = s.peRatio ? s.peRatio.toFixed(1) : 'N/A'
     const dividend = s.dividendYield ? `${(s.dividendYield * 100).toFixed(2)}%` : 'None'
-    const sentiment = s.newsSentiment !== null
-      ? s.newsSentiment > 0.2 ? 'Positive' : s.newsSentiment < -0.2 ? 'Negative' : 'Neutral'
-      : 'Unknown'
+    const sentimentLabel = formatSentimentLabel(s.newsSentiment)
+    const sectorSentimentLabel = formatSentimentLabel(s.sectorAverageSentiment)
+
+    const margin = s.profitMargins !== null ? `${(s.profitMargins * 100).toFixed(1)}%` : 'N/A'
+
+    // Build news section with headlines + summaries
+    const newsSection = s.newsSummaries.length > 0
+      ? s.newsSummaries.map((summary, i) => {
+          const headline = s.newsHeadlines[i] || ''
+          return `- ${headline}${summary ? ` — ${summary}` : ''}`
+        }).join('\n')
+      : '- No recent news'
+
+    // Build earnings estimate section
+    const earningsEstimates = (s.epsEstimate !== null || s.revenueEstimate !== null)
+      ? `\n**Earnings Estimates${s.upcomingEarningsDate ? ` (${s.upcomingEarningsDate})` : ''}:**${s.epsEstimate !== null ? `\n- EPS estimate: $${s.epsEstimate.toFixed(2)}` : ''}${s.revenueEstimate !== null ? `\n- Revenue estimate: ${formatLargeNumber(s.revenueEstimate)}` : ''}`
+      : (s.upcomingEarningsDate ? `\n**Upcoming Earnings:** ${s.upcomingEarningsDate}` : '')
 
     return `
 ## ${s.ticker} - ${s.companyName}
@@ -174,21 +211,27 @@ Sector: ${s.sector} | Industry: ${s.industry}
 - Position in 52-Week Range: ${pricePosition}%
 - Recent Change: ${s.recentChange >= 0 ? '+' : ''}${s.recentChange.toFixed(2)}%
 
+**Financials:**
+- Revenue: ${formatLargeNumber(s.totalRevenue)}
+- Profit Margin: ${margin}
+- Total Debt: ${formatLargeNumber(s.totalDebt)}
+- Current Ratio: ${s.currentRatio !== null ? s.currentRatio.toFixed(2) : 'N/A'}
+
 **Company Description:**
 ${s.description.slice(0, 500)}${s.description.length > 500 ? '...' : ''}
 
-**Recent News Headlines:**
-${s.newsHeadlines.length > 0 ? s.newsHeadlines.map((h) => `- ${h}`).join('\n') : '- No recent news'}
+**Recent News:**
+${newsSection}
 
-**Sentiment:** ${sentiment}
-${s.upcomingEarningsDate ? `**Upcoming Earnings:** ${s.upcomingEarningsDate}` : ''}
+**Sentiment:** ${sentimentLabel} (sector avg: ${sectorSentimentLabel})
+${earningsEstimates}
 `
   }).join('\n---\n')
 
   return `You are a stock analyst creating investment ideas based on REAL market data. Analyze these stocks and create compelling investment theses.
 
 IMPORTANT: These are REAL companies with REAL data. Your analysis should:
-- Reference specific fundamentals (P/E, market cap, etc.)
+- Reference specific fundamentals (P/E, market cap, revenue, margins, debt)
 - Mention actual sector dynamics and competitive positioning
 - Note any relevant news or upcoming catalysts
 - Be factual and grounded in the data provided
@@ -206,7 +249,13 @@ For each stock, create an investment analysis. Return ONLY valid JSON in this ex
       "thesis": "2-3 paragraphs explaining the bull case. Reference specific data points: valuation metrics, market position, catalysts, sector trends. Be specific and factual.",
       "bearCase": "1-2 paragraphs of genuine risks: valuation concerns, competitive threats, macro headwinds, specific challenges facing the company or sector.",
       "confidenceScore": 65,
-      "riskLevel": "interesting"
+      "riskLevel": "interesting",
+      "signals": {
+        "hiring": false,
+        "earnings": false,
+        "regulatory": false,
+        "supplyChain": false
+      }
     }
   ]
 }
@@ -222,7 +271,12 @@ Guidelines:
   - "spicy": Small-cap, high growth, volatile, binary outcomes
 - Use the EXACT ticker symbol provided (e.g., "ASML.AS" not "ASML")
 - Each thesis should be distinct and reference the specific data provided
-- Bear cases should identify real, material risks - not token objections`
+- Bear cases should identify real, material risks - not token objections
+- Signal classification (set each based on the actual news and data context, not just keyword presence):
+  - signals.hiring: true if evidence of workforce expansion, strong growth, or beat expectations
+  - signals.earnings: true if earnings are upcoming within 14 days or recent results are notable
+  - signals.regulatory: true if regulatory events (approvals, investigations, compliance) affect the stock
+  - signals.supplyChain: true if supply chain, logistics, or production factors are relevant`
 }
 
 export function contextualizePortfolioPrompt(

@@ -3,6 +3,7 @@ import type { RealStockDataForPrompt } from '@/lib/ai/prompts'
 import { getChatCompletion } from '@/lib/ai/claude'
 import { realStockAnalysisPrompt } from '@/lib/ai/prompts'
 import { prisma } from '@/lib/prisma'
+import { getIdeaConfig, MARKET_SUFFIXES, type IdeaConfigData } from '@/lib/idea-config'
 import { FinnhubProvider } from './finnhub-provider'
 import YahooFinance from 'yahoo-finance2'
 
@@ -20,7 +21,7 @@ async function getUsdToEur(): Promise<number> {
   }
 
   try {
-    const quote = await yahooFinance.quote('EURUSD=X')
+    const quote = await yahooFinance.quote('EURUSD=X', {}, { validateResult: false })
     if (quote && typeof quote === 'object' && 'regularMarketPrice' in quote) {
       const price = quote.regularMarketPrice as number
       // EURUSD quote gives us how many USD per EUR, we need USD to EUR
@@ -52,14 +53,13 @@ interface FundamentalsCache {
 const fundamentalsCache = new Map<string, FundamentalsCache>()
 const FUNDAMENTALS_CACHE_TTL = 4 * 60 * 60 * 1000 // 4 hours
 
-// Markets to pull from
-const MARKETS = [
-  { region: 'US', suffix: '' },
-  { region: 'DE', suffix: '.DE' }, // Germany (XETRA)
-  { region: 'FR', suffix: '.PA' }, // France (Euronext Paris)
-  { region: 'NL', suffix: '.AS' }, // Netherlands (Euronext Amsterdam)
-  { region: 'GB', suffix: '.L' },  // UK (London)
-]
+// Build markets list from config
+function getMarkets(config: IdeaConfigData) {
+  return config.markets.map((region) => ({
+    region,
+    suffix: MARKET_SUFFIXES[region] ?? '',
+  }))
+}
 
 // Type definitions for Yahoo Finance responses
 interface YahooQuoteSummary {
@@ -118,21 +118,25 @@ export class RealIdeaProvider implements IdeaProvider {
   }
 
   async generateDailyIdeas(count: number): Promise<Idea[]> {
-    // 1. Get candidate stocks from multiple sources
-    const candidates = await this.getCandidateStocks(count * 3) // Get 3x to have selection
+    const config = await getIdeaConfig()
+
+    // 1. Get candidate stocks from multiple sources (fetch extra to survive filtering)
+    const candidates = await this.getCandidateStocks(count * 5, config)
 
     if (candidates.length === 0) {
-      throw new Error('Failed to fetch any candidate stocks')
+      console.warn('No candidate stocks found from any source')
+      return []
     }
 
     // 2. Fetch fundamentals for top candidates
-    const enrichedCandidates = await this.enrichWithFundamentals(candidates.slice(0, count * 2))
+    const enrichedCandidates = await this.enrichWithFundamentals(candidates.slice(0, count * 3))
 
     // 3. Filter to best candidates
-    const filteredCandidates = this.filterCandidates(enrichedCandidates).slice(0, count)
+    const filteredCandidates = this.filterCandidates(enrichedCandidates, config).slice(0, count)
 
     if (filteredCandidates.length === 0) {
-      throw new Error('No suitable candidates after filtering')
+      console.warn('No candidates passed filters — preferences may be too restrictive')
+      return []
     }
 
     // 4. Enrich with Finnhub data (news, sentiment, earnings)
@@ -141,17 +145,24 @@ export class RealIdeaProvider implements IdeaProvider {
     // 5. Generate AI analysis
     const ideas = await this.generateAnalysis(fullyEnriched)
 
+    // 6. Post-filter by risk levels if configured
+    if (config.riskLevels.length > 0) {
+      return ideas.filter((idea) => config.riskLevels.includes(idea.riskLevel))
+    }
+
     return ideas
   }
 
-  private async getCandidateStocks(count: number): Promise<string[]> {
+  private async getCandidateStocks(count: number, config: IdeaConfigData): Promise<string[]> {
     const allCandidates: string[] = []
 
     // Try to get stocks from different sources
     const sources = [
-      this.getTrendingStocks.bind(this),
-      this.getScreenerStocks.bind(this, 'day_gainers'),
-      this.getScreenerStocks.bind(this, 'most_actives'),
+      () => this.getTrendingStocks(config),
+      () => this.getScreenerStocks('day_gainers'),
+      () => this.getScreenerStocks('most_actives'),
+      () => this.getScreenerStocks('small_cap_gainers'),
+      () => this.getScreenerStocks('undervalued_growth_stocks'),
     ]
 
     for (const source of sources) {
@@ -172,7 +183,7 @@ export class RealIdeaProvider implements IdeaProvider {
     return shuffled.slice(0, count)
   }
 
-  private async getTrendingStocks(): Promise<string[]> {
+  private async getTrendingStocks(config: IdeaConfigData): Promise<string[]> {
     const cacheKey = 'trending'
     const cached = screenerCache.get(cacheKey)
     if (cached && Date.now() - cached.timestamp < SCREENER_CACHE_TTL) {
@@ -180,16 +191,17 @@ export class RealIdeaProvider implements IdeaProvider {
     }
 
     const tickers: string[] = []
+    const markets = getMarkets(config)
 
     // Fetch trending from multiple regions
-    for (const market of MARKETS) {
+    for (const market of markets) {
       try {
-        const result = await yahooFinance.trendingSymbols(market.region) as YahooTrendingResult
+        const result = await yahooFinance.trendingSymbols(market.region, {}, { validateResult: false }) as YahooTrendingResult
         if (result && result.quotes) {
           const symbols = result.quotes
             .map((q) => q.symbol)
             .filter((s): s is string => typeof s === 'string')
-            .slice(0, 5) // Take top 5 from each region
+            .slice(0, 10) // Take top 10 from each region
 
           tickers.push(...symbols)
         }
@@ -210,11 +222,11 @@ export class RealIdeaProvider implements IdeaProvider {
     }
 
     try {
-      // Cast to expected type - yahoo-finance2 expects specific screener IDs
-      const result = await yahooFinance.screener({
-        scrIds: screenerType as 'day_gainers' | 'most_actives',
-        count: 25,
-      }) as YahooScreenerResult
+      const result = await yahooFinance.screener(
+        { scrIds: screenerType as 'day_gainers' | 'most_actives', count: 40 },
+        undefined,
+        { validateResult: false },
+      ) as YahooScreenerResult
 
       if (!result || !result.quotes) {
         return []
@@ -247,7 +259,7 @@ export class RealIdeaProvider implements IdeaProvider {
       try {
         const summary = await yahooFinance.quoteSummary(ticker, {
           modules: ['price', 'summaryDetail', 'assetProfile', 'financialData'],
-        }) as YahooQuoteSummary
+        }, { validateResult: false }) as YahooQuoteSummary
 
         if (!summary || !summary.price || !summary.price.regularMarketPrice) {
           continue
@@ -261,6 +273,8 @@ export class RealIdeaProvider implements IdeaProvider {
         const currency = price.currency || 'USD'
         const priceValue = price.regularMarketPrice!
         const priceEur = currency === 'EUR' ? priceValue : priceValue * usdEur
+
+        const financialData = summary.financialData || {}
 
         const stockData: RealStockData = {
           ticker,
@@ -278,6 +292,10 @@ export class RealIdeaProvider implements IdeaProvider {
           recentChange: price.regularMarketChangePercent || 0,
           dividendYield: detail.dividendYield || null,
           description: profile.longBusinessSummary || '',
+          totalRevenue: financialData.totalRevenue ?? null,
+          profitMargins: financialData.profitMargins ?? null,
+          totalDebt: financialData.totalDebt ?? null,
+          currentRatio: financialData.currentRatio ?? null,
         }
 
         fundamentalsCache.set(ticker, { data: stockData, timestamp: Date.now() })
@@ -290,30 +308,48 @@ export class RealIdeaProvider implements IdeaProvider {
     return enriched
   }
 
-  private filterCandidates(candidates: RealStockData[]): RealStockData[] {
-    return candidates.filter((c) => {
-      // Filter by market cap (> €500M)
+  private filterCandidates(candidates: RealStockData[], config: IdeaConfigData): RealStockData[] {
+    const reasons: Record<string, number> = {}
+    const bump = (key: string) => { reasons[key] = (reasons[key] || 0) + 1 }
+
+    const filtered = candidates.filter((c) => {
+      // Filter by market cap
       const marketCapEur = c.currency === 'EUR' ? c.marketCap : c.marketCap * usdToEur
-      if (marketCapEur < 500_000_000) return false
+      if (config.minMarketCapEur > 0 && marketCapEur < config.minMarketCapEur) { bump('marketCapTooLow'); return false }
+      if (config.maxMarketCapEur !== null && marketCapEur > config.maxMarketCapEur) { bump('marketCapTooHigh'); return false }
 
-      // Filter by price (> €5)
-      if (c.priceEur < 5) return false
+      // Filter by price
+      if (c.priceEur < config.minPriceEur) { bump('priceTooLow'); return false }
+      if (config.maxPriceEur !== null && c.priceEur > config.maxPriceEur) { bump('priceTooHigh'); return false }
 
-      // Must have sector info
-      if (c.sector === 'Unknown') return false
+      // Filter by P/E ratio
+      if (config.minPeRatio !== null && (c.peRatio === null || c.peRatio < config.minPeRatio)) { bump('peRatio'); return false }
+      if (config.maxPeRatio !== null && (c.peRatio === null || c.peRatio > config.maxPeRatio)) { bump('peRatio'); return false }
 
-      // Must have a description
-      if (!c.description || c.description.length < 50) return false
+      // Filter by dividend yield
+      if (config.minDividendYield !== null && (c.dividendYield === null || c.dividendYield < config.minDividendYield)) { bump('dividendYield'); return false }
+
+      // Filter by sectors (allowlist)
+      if (config.sectors.length > 0 && !config.sectors.includes(c.sector)) { bump('sectorNotAllowed'); return false }
+
+      // Filter by excluded sectors
+      if (config.excludedSectors.length > 0 && config.excludedSectors.includes(c.sector)) { bump('sectorExcluded'); return false }
 
       return true
     })
+
+    if (filtered.length === 0 && candidates.length > 0) {
+      console.warn(`All ${candidates.length} candidates filtered out:`, reasons)
+    }
+
+    return filtered
   }
 
   private async enrichWithFinnhub(candidates: RealStockData[]): Promise<EnrichedStockData[]> {
     const enriched: EnrichedStockData[] = []
 
     for (const candidate of candidates) {
-      const [news, sentiment, earnings] = await Promise.all([
+      const [news, sentimentResult, earnings] = await Promise.all([
         this.finnhub.getCompanyNews(candidate.ticker),
         this.finnhub.getNewsSentiment(candidate.ticker),
         this.finnhub.getUpcomingEarnings(candidate.ticker),
@@ -323,7 +359,8 @@ export class RealIdeaProvider implements IdeaProvider {
         ...candidate,
         news,
         upcomingEarnings: earnings,
-        newsSentiment: sentiment,
+        newsSentiment: sentimentResult.sentiment,
+        sectorAverageSentiment: sentimentResult.sectorAverageSentiment,
       })
     }
 
@@ -334,10 +371,13 @@ export class RealIdeaProvider implements IdeaProvider {
     // Convert to prompt format
     const promptData: RealStockDataForPrompt[] = stocks.map((s) => ({
       ...s,
-      newsHeadlines: s.news.slice(0, 5).map((n) => n.headline),
+      newsHeadlines: s.news.slice(0, 3).map((n) => n.headline),
+      newsSummaries: s.news.slice(0, 3).map((n) => (n.summary || '').slice(0, 200)),
       upcomingEarningsDate: s.upcomingEarnings
         ? s.upcomingEarnings.date.toISOString().split('T')[0]
         : null,
+      epsEstimate: s.upcomingEarnings?.epsEstimate ?? null,
+      revenueEstimate: s.upcomingEarnings?.revenueEstimate ?? null,
     }))
 
     const prompt = realStockAnalysisPrompt(promptData)
@@ -357,13 +397,19 @@ export class RealIdeaProvider implements IdeaProvider {
       throw new Error('AI response missing ideas array')
     }
 
-    // Map AI response to Idea interface, adding signals from real data
+    // Map AI response to Idea interface, using AI-classified signals
     const ideas: Idea[] = parsed.ideas.map((aiIdea) => {
       const ticker = String(aiIdea.ticker || '')
       const stockData = stocks.find((s) => s.ticker === ticker)
 
-      // Generate signals from real data
-      const signals = this.generateSignals(stockData)
+      // Read signals from AI response, fall back to all-false
+      const aiSignals = aiIdea.signals as Partial<Signals> | undefined
+      const signals: Signals = {
+        hiring: aiSignals?.hiring === true,
+        earnings: aiSignals?.earnings === true,
+        regulatory: aiSignals?.regulatory === true,
+        supplyChain: aiSignals?.supplyChain === true,
+      }
 
       return {
         ticker,
@@ -382,38 +428,6 @@ export class RealIdeaProvider implements IdeaProvider {
     })
 
     return ideas
-  }
-
-  private generateSignals(stockData?: EnrichedStockData): Signals {
-    if (!stockData) {
-      return {
-        hiring: false,
-        earnings: false,
-        regulatory: false,
-        supplyChain: false,
-      }
-    }
-
-    // Earnings signal: true if reporting within 14 days
-    const earningsSignal = stockData.upcomingEarnings !== null &&
-      stockData.upcomingEarnings.date.getTime() - Date.now() < 14 * 24 * 60 * 60 * 1000
-
-    // News-based signals
-    const newsSignals = this.finnhub.analyzeNewsForSignals(stockData.news)
-
-    // Hiring signal: positive sentiment + growth sector, or positive news
-    const growthSectors = ['Technology', 'Healthcare', 'Consumer Cyclical', 'Communication Services']
-    const hiringSignal = newsSignals.hiring ||
-      (stockData.newsSentiment !== null &&
-        stockData.newsSentiment > 0.2 &&
-        growthSectors.includes(stockData.sector))
-
-    return {
-      hiring: hiringSignal,
-      earnings: earningsSignal,
-      regulatory: newsSignals.regulatory,
-      supplyChain: newsSignals.supplyChain,
-    }
   }
 
   async getIdeaDetails(ticker: string): Promise<IdeaDetails> {
@@ -436,7 +450,7 @@ export class RealIdeaProvider implements IdeaProvider {
     // Get current price from Yahoo Finance
     let currentPrice = idea.currentPrice
     try {
-      const quote = await yahooFinance.quote(ticker)
+      const quote = await yahooFinance.quote(ticker, {}, { validateResult: false })
       if (quote && typeof quote === 'object' && 'regularMarketPrice' in quote) {
         const price = quote.regularMarketPrice as number
         const currency = (quote as { currency?: string }).currency || 'USD'

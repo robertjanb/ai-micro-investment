@@ -51,7 +51,12 @@ interface CacheEntry<T> {
 }
 
 const newsCache = new Map<string, CacheEntry<NewsItem[]>>()
-const sentimentCache = new Map<string, CacheEntry<number | null>>()
+interface SentimentResult {
+  sentiment: number | null
+  sectorAverageSentiment: number | null
+}
+
+const sentimentCache = new Map<string, CacheEntry<SentimentResult>>()
 const earningsCache = new Map<string, CacheEntry<EarningsEvent | null>>()
 
 const NEWS_CACHE_TTL = 4 * 60 * 60 * 1000 // 4 hours
@@ -137,7 +142,7 @@ export class FinnhubProvider {
     return news
   }
 
-  async getNewsSentiment(ticker: string): Promise<number | null> {
+  async getNewsSentiment(ticker: string): Promise<SentimentResult> {
     // Check cache
     const cached = sentimentCache.get(ticker)
     if (cached && Date.now() - cached.timestamp < SENTIMENT_CACHE_TTL) {
@@ -151,16 +156,21 @@ export class FinnhubProvider {
     })
 
     if (!response || !response.sentiment) {
-      sentimentCache.set(ticker, { data: null, timestamp: Date.now() })
-      return null
+      const result: SentimentResult = { sentiment: null, sectorAverageSentiment: null }
+      sentimentCache.set(ticker, { data: result, timestamp: Date.now() })
+      return result
     }
 
     // Convert to -1 to 1 scale
     // bullishPercent is 0-1, so we map 0 -> -1, 0.5 -> 0, 1 -> 1
     const sentiment = (response.sentiment.bullishPercent - 0.5) * 2
+    const sectorAverageSentiment = response.sectorAverageBullishPercent != null
+      ? (response.sectorAverageBullishPercent - 0.5) * 2
+      : null
 
-    sentimentCache.set(ticker, { data: sentiment, timestamp: Date.now() })
-    return sentiment
+    const result: SentimentResult = { sentiment, sectorAverageSentiment }
+    sentimentCache.set(ticker, { data: result, timestamp: Date.now() })
+    return result
   }
 
   async getUpcomingEarnings(ticker: string, daysAhead: number = 30): Promise<EarningsEvent | null> {
@@ -212,31 +222,4 @@ export class FinnhubProvider {
     return event
   }
 
-  // Analyze news for specific signals
-  analyzeNewsForSignals(news: NewsItem[]): {
-    regulatory: boolean
-    supplyChain: boolean
-    hiring: boolean
-  } {
-    const regulatoryKeywords = [
-      'FDA', 'SEC', 'regulatory', 'approval', 'compliance', 'investigation',
-      'lawsuit', 'antitrust', 'GDPR', 'privacy', 'fine', 'penalty'
-    ]
-    const supplyChainKeywords = [
-      'supply chain', 'shipping', 'inventory', 'shortage', 'logistics',
-      'manufacturing', 'production', 'supplier', 'warehouse', 'delivery'
-    ]
-    const hiringKeywords = [
-      'hiring', 'jobs', 'expansion', 'growth', 'revenue increase',
-      'beat expectations', 'record', 'momentum', 'strong quarter'
-    ]
-
-    const allText = news.map((n) => `${n.headline} ${n.summary}`).join(' ').toLowerCase()
-
-    return {
-      regulatory: regulatoryKeywords.some((kw) => allText.includes(kw.toLowerCase())),
-      supplyChain: supplyChainKeywords.some((kw) => allText.includes(kw.toLowerCase())),
-      hiring: hiringKeywords.some((kw) => allText.includes(kw.toLowerCase())),
-    }
-  }
 }

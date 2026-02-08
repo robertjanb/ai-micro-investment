@@ -139,8 +139,8 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-      <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">Add Holding</h3>
+    <form onSubmit={handleSubmit} className="app-card p-4">
+      <h3 className="text-sm font-medium text-slate-900 mb-4">Add Holding</h3>
 
       <div className="flex gap-2 mb-4">
         <button
@@ -148,8 +148,8 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
           onClick={() => setMode('idea')}
           className={`px-3 py-1.5 text-xs uppercase tracking-[0.15em] rounded-full border ${
             mode === 'idea'
-              ? 'bg-teal-50 border-teal-300 text-teal-700 dark:bg-teal-900/30 dark:border-teal-700 dark:text-teal-300'
-              : 'border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-400'
+              ? 'bg-teal-50 border-teal-300 text-teal-700'
+              : 'border-slate-200 text-slate-500'
           }`}
         >
           From Ideas
@@ -159,8 +159,8 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
           onClick={() => setMode('manual')}
           className={`px-3 py-1.5 text-xs uppercase tracking-[0.15em] rounded-full border ${
             mode === 'manual'
-              ? 'bg-teal-50 border-teal-300 text-teal-700 dark:bg-teal-900/30 dark:border-teal-700 dark:text-teal-300'
-              : 'border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-400'
+              ? 'bg-teal-50 border-teal-300 text-teal-700'
+              : 'border-slate-200 text-slate-500'
           }`}
         >
           Manual Entry
@@ -170,13 +170,13 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
       <div className="space-y-3">
         {mode === 'idea' && (
           <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <label className="block text-xs text-slate-500 mb-1">
               Select Idea
             </label>
             <select
               value={selectedIdeaId}
               onChange={(e) => setSelectedIdeaId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded bg-white text-slate-900"
             >
               <option value="">Choose an idea...</option>
               {ideas.map((idea) => (
@@ -191,7 +191,7 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
         {mode === 'manual' && (
           <>
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label className="block text-xs text-slate-500 mb-1">
                 Ticker (e.g. AAPL, MSFT, GOOGL)
               </label>
               <div className="flex gap-2">
@@ -199,7 +199,7 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
                   type="text"
                   value={ticker}
                   onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                  className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
+                  className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded bg-white text-slate-900 font-mono"
                   placeholder="AAPL"
                   maxLength={10}
                 />
@@ -207,21 +207,21 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
                   type="button"
                   onClick={handleLookup}
                   disabled={isLookingUp || !ticker.trim()}
-                  className="px-3 py-2 text-xs uppercase tracking-[0.1em] bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
+                  className="px-3 py-2 text-xs uppercase tracking-[0.1em] bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50"
                 >
                   {isLookingUp ? 'Looking up...' : 'Lookup'}
                 </button>
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <label className="block text-xs text-slate-500 mb-1">
                 Company Name {quoteCurrency ? '' : '(optional)'}
               </label>
               <input
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded bg-white text-slate-900"
                 placeholder="Company Inc."
               />
             </div>
@@ -230,27 +230,27 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <label className="block text-xs text-slate-500 mb-1">
               Quantity
             </label>
             <input
               type="number"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded bg-white text-slate-900"
               step="0.01"
               min="0.01"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <label className="block text-xs text-slate-500 mb-1">
               Purchase Price {quoteCurrency ? `(${quoteCurrency})` : ''}
             </label>
             <input
               type="number"
               value={purchasePrice}
               onChange={(e) => setPurchasePrice(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded bg-white text-slate-900"
               step="0.01"
               min="0.01"
               placeholder={mode === 'idea' ? 'Auto-filled' : 'Use Lookup or enter manually'}
@@ -259,33 +259,33 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <label className="block text-xs text-slate-500 mb-1">
             Purchase Date
           </label>
           <input
             type="date"
             value={purchaseDate}
             onChange={(e) => setPurchaseDate(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded bg-white text-slate-900"
             max={new Date().toISOString().split('T')[0]}
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <label className="block text-xs text-slate-500 mb-1">
             Notes (optional)
           </label>
           <input
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded bg-white text-slate-900"
             placeholder="Why you bought this..."
           />
         </div>
 
         {error && (
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <p className="text-sm text-rose-600">{error}</p>
         )}
 
         <div className="flex gap-2 pt-2">
@@ -299,7 +299,7 @@ export function AddHoldingForm({ onAdd, onCancel }: AddHoldingFormProps) {
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900"
           >
             Cancel
           </button>

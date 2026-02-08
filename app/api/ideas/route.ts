@@ -19,6 +19,14 @@ export async function GET() {
     )
   }
 
+  const priceHistoryInclude = {
+    priceHistory: {
+      orderBy: { timestamp: 'asc' as const },
+      take: 30,
+      select: { price: true },
+    },
+  }
+
   try {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -44,6 +52,7 @@ export async function GET() {
     let ideas = await prisma.idea.findMany({
       where: { generatedDate: today },
       orderBy: { confidenceScore: 'desc' },
+      include: priceHistoryInclude,
     })
 
     // Generate new ideas if none exist for today
@@ -54,7 +63,15 @@ export async function GET() {
           3 + Math.floor(Math.random() * 3) // 3-5 ideas
         )
 
-        ideas = await Promise.all(
+        if (generatedIdeas.length === 0) {
+          // No candidates matched filters — return empty with hint
+          return NextResponse.json({
+            ideas: [],
+            message: 'No stocks matched your current idea preferences. Try adjusting your filters in Settings.',
+          })
+        }
+
+        const createdIdeas = await Promise.all(
           generatedIdeas.map((idea) =>
             prisma.idea.create({
               data: {
@@ -77,7 +94,7 @@ export async function GET() {
 
         // Create initial price history entries
         await Promise.all(
-          ideas.map((idea) =>
+          createdIdeas.map((idea) =>
             prisma.priceHistory.create({
               data: {
                 ideaId: idea.id,
@@ -86,6 +103,13 @@ export async function GET() {
             })
           )
         )
+
+        // Re-fetch to include priceHistory in response
+        ideas = await prisma.idea.findMany({
+          where: { generatedDate: today },
+          orderBy: { confidenceScore: 'desc' },
+          include: priceHistoryInclude,
+        })
       } catch (error) {
         await prisma.dailyIdeaBatch.delete({
           where: { generatedDate: today },
@@ -98,6 +122,7 @@ export async function GET() {
         ideas = await prisma.idea.findMany({
           where: { generatedDate: today },
           orderBy: { confidenceScore: 'desc' },
+          include: priceHistoryInclude,
         })
       }
     } else {
@@ -110,6 +135,7 @@ export async function GET() {
       ideas = await prisma.idea.findMany({
         where: { generatedDate: today },
         orderBy: { confidenceScore: 'desc' },
+        include: priceHistoryInclude,
       })
     }
 

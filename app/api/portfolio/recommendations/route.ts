@@ -1,52 +1,64 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getRecommendationProvider } from '@/lib/data-sources'
 import type { HoldingData, Signals } from '@/lib/data-sources/types'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const force = request.nextUrl.searchParams.get('force') === 'true'
+
   try {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // Check for existing recommendations for today
-    const existingRecommendations = await prisma.recommendation.findMany({
-      where: {
-        userId: session.user.id,
-        generatedAt: today,
-      },
-      include: {
-        holding: {
-          select: {
-            id: true,
-            ticker: true,
-            companyName: true,
+    // If force-refresh, delete existing recommendations for today
+    if (force) {
+      await prisma.recommendation.deleteMany({
+        where: {
+          userId: session.user.id,
+          generatedAt: today,
+        },
+      })
+    } else {
+      // Check for existing recommendations for today
+      const existingRecommendations = await prisma.recommendation.findMany({
+        where: {
+          userId: session.user.id,
+          generatedAt: today,
+        },
+        include: {
+          holding: {
+            select: {
+              id: true,
+              ticker: true,
+              companyName: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    if (existingRecommendations.length > 0) {
-      return NextResponse.json({
-        recommendations: existingRecommendations.map((r) => ({
-          id: r.id,
-          ticker: r.ticker,
-          action: r.action,
-          reasoning: r.reasoning,
-          confidence: r.confidence,
-          holdingId: r.holdingId,
-          holding: r.holding,
-          generatedAt: r.generatedAt,
-        })),
-        generatedAt: existingRecommendations[0].generatedAt,
-        cached: true,
+        orderBy: { createdAt: 'desc' },
       })
+
+      if (existingRecommendations.length > 0) {
+        return NextResponse.json({
+          recommendations: existingRecommendations.map((r) => ({
+            id: r.id,
+            ticker: r.ticker,
+            action: r.action,
+            reasoning: r.reasoning,
+            confidence: r.confidence,
+            holdingId: r.holdingId,
+            holding: r.holding,
+            generatedAt: r.generatedAt,
+          })),
+          generatedAt: existingRecommendations[0].createdAt,
+          cached: true,
+        })
+      }
     }
 
     // Fetch user's holdings
@@ -132,7 +144,7 @@ export async function GET() {
         holding: r.holding,
         generatedAt: r.generatedAt,
       })),
-      generatedAt: today,
+      generatedAt: storedRecommendations[0]?.createdAt ?? today,
       cached: false,
     })
   } catch (error) {

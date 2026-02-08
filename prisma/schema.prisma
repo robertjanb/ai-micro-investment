@@ -133,3 +133,29 @@ model Recommendation {
   @@unique([userId, ticker, generatedAt])
   @@index([userId, generatedAt])
 }
+
+model CronJobStatus {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?  @db.Text
+  lastSummary   Json?
+  updatedAt     DateTime @updatedAt
+}
+
+model IdeaConfig {
+  id                String   @id @default("global")
+  markets           Json     // e.g. ["US", "DE", "FR", "NL", "GB"]
+  minMarketCapEur   Float    @default(500000000)
+  maxMarketCapEur   Float?   // null = no upper limit
+  minPeRatio        Float?
+  maxPeRatio        Float?
+  minDividendYield  Float?   // e.g. 0.02 for 2%
+  sectors           Json     // [] = all sectors, otherwise allowlist
+  excludedSectors   Json     // sectors to exclude
+  riskLevels        Json     // e.g. ["safe", "interesting"] — filter AI output
+  minPriceEur       Float    @default(5)
+  maxPriceEur       Float?   // null = no upper limit
+  updatedAt         DateTime @updatedAt
+}

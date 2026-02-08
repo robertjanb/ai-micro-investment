@@ -34,6 +34,20 @@ interface CacheEntry {
 const priceCache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 60000 // 1 minute cache
 
+interface QuoteCacheEntry {
+  quote: {
+    price: number
+    change: number
+    changePercent: number
+    currency: string
+    name: string
+  }
+  timestamp: number
+}
+
+const quoteCache = new Map<string, QuoteCacheEntry>()
+const QUOTE_CACHE_TTL_MS = 120000 // 2 minute cache
+
 export class YahooPriceProvider implements PriceProvider {
   async getCurrentPrice(ticker: string): Promise<number> {
     const cached = priceCache.get(ticker)
@@ -44,7 +58,7 @@ export class YahooPriceProvider implements PriceProvider {
     }
 
     try {
-      const quote = await yahooFinance.quote(ticker) as YahooQuote
+      const quote = await yahooFinance.quote(ticker, {}, { validateResult: false }) as YahooQuote
 
       if (!quote || !quote.regularMarketPrice) {
         throw new Error(`No price data for ticker: ${ticker}`)
@@ -96,7 +110,7 @@ export class YahooPriceProvider implements PriceProvider {
 
     // Batch fetch quotes for efficiency
     try {
-      const results = await yahooFinance.quote(tickers) as YahooQuote | YahooQuote[]
+      const results = await yahooFinance.quote(tickers, {}, { validateResult: false }) as YahooQuote | YahooQuote[]
       const now = Date.now()
 
       // Handle both single result and array of results
@@ -126,7 +140,7 @@ export class YahooPriceProvider implements PriceProvider {
   // Utility method to check if a ticker is valid
   async validateTicker(ticker: string): Promise<boolean> {
     try {
-      const quote = await yahooFinance.quote(ticker) as YahooQuote
+      const quote = await yahooFinance.quote(ticker, {}, { validateResult: false }) as YahooQuote
       return !!(quote && quote.regularMarketPrice)
     } catch {
       return false
@@ -142,19 +156,31 @@ export class YahooPriceProvider implements PriceProvider {
     name: string
   } | null> {
     try {
-      const quote = await yahooFinance.quote(ticker) as YahooQuote
+      const cacheKey = ticker.toUpperCase()
+      const cached = quoteCache.get(cacheKey)
+      const now = Date.now()
+
+      if (cached && now - cached.timestamp < QUOTE_CACHE_TTL_MS) {
+        return cached.quote
+      }
+
+      const quote = await yahooFinance.quote(cacheKey, {}, { validateResult: false }) as YahooQuote
 
       if (!quote || !quote.regularMarketPrice) {
         return null
       }
 
-      return {
+      const quoteInfo = {
         price: quote.regularMarketPrice,
         change: quote.regularMarketChange ?? 0,
         changePercent: quote.regularMarketChangePercent ?? 0,
         currency: quote.currency ?? 'USD',
         name: quote.shortName ?? quote.longName ?? ticker,
       }
+
+      quoteCache.set(cacheKey, { quote: quoteInfo, timestamp: now })
+
+      return quoteInfo
     } catch {
       return null
     }

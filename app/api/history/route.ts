@@ -107,6 +107,27 @@ export async function GET(req: Request) {
 
     const total = totalRows[0]?.count ?? 0
 
+    // Fetch price history for the returned ideas
+    const ideaIds = rows.map((r) => r.id)
+    const priceHistoryRows = ideaIds.length > 0
+      ? await prisma.priceHistory.findMany({
+          where: { ideaId: { in: ideaIds } },
+          orderBy: { timestamp: 'asc' },
+          select: { ideaId: true, price: true },
+        })
+      : []
+
+    const priceHistoryMap = new Map<string, number[]>()
+    for (const ph of priceHistoryRows) {
+      const arr = priceHistoryMap.get(ph.ideaId) ?? []
+      arr.push(ph.price)
+      priceHistoryMap.set(ph.ideaId, arr)
+    }
+    // Keep only last 30 entries per idea
+    priceHistoryMap.forEach((arr, key) => {
+      if (arr.length > 30) priceHistoryMap.set(key, arr.slice(-30))
+    })
+
     const ideas = rows.map((idea) => ({
       id: idea.id,
       ticker: idea.ticker,
@@ -126,6 +147,7 @@ export async function GET(req: Request) {
         Math.round(
           (10 * (idea.currentPrice / idea.initialPrice) - 10) * 100
         ) / 100,
+      priceHistory: priceHistoryMap.get(idea.id) ?? [],
       generatedDate: idea.generatedDate,
     }))
 
