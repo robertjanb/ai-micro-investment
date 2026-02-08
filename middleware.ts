@@ -2,7 +2,7 @@ export { default } from 'next-auth/middleware'
 
 export const config = {
   matcher: [
-    '/chat/:path*',
+    '/ideas/:path*',
     '/portfolio/:path*',
     '/watchlist/:path*',
     '/history/:path*',

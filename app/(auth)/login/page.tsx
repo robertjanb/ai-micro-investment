@@ -35,7 +35,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/chat')
+    router.push('/ideas')
     router.refresh()
   }
 

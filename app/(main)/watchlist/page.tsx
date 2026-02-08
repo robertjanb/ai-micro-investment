@@ -14,6 +14,8 @@ interface WatchlistEntry {
   currentPrice: number
   currency: string
   changePercent: number
+  changeAbsolute: number
+  priceHistory: number[]
   addedAt: string
 }
 
@@ -50,11 +52,38 @@ export default function WatchlistPage() {
     }
   }
 
+  async function handleAddToPortfolio(data: {
+    ideaId: string
+    ticker: string
+    companyName: string
+    currentPrice: number
+    quantity: number
+  }): Promise<boolean> {
+    try {
+      const res = await fetch('/api/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ideaId: data.ideaId,
+          ticker: data.ticker,
+          companyName: data.companyName,
+          quantity: data.quantity,
+          purchasePrice: data.currentPrice,
+          purchaseDate: new Date().toISOString().split('T')[0],
+        }),
+      })
+      return res.ok
+    } catch (error) {
+      console.error('Failed to add to portfolio:', error)
+      return false
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <div className="h-20 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
-        <div className="h-20 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
+        <div className="h-20 app-card animate-pulse" />
+        <div className="h-20 app-card animate-pulse" />
       </div>
     )
   }
@@ -62,12 +91,12 @@ export default function WatchlistPage() {
   if (items.length === 0) {
     return (
       <div className="text-center py-16">
-        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+        <h2 className="text-xl font-semibold text-slate-700 mb-2">
           Your watchlist is empty
         </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+        <p className="text-sm text-slate-500 max-w-md mx-auto">
           When you find an idea worth tracking, add it here and I&apos;ll show
-          you how it would&apos;ve performed. Head to Chat to see today&apos;s
+          you how it would&apos;ve performed. Head to Ideas to see today&apos;s
           ideas.
         </p>
       </div>
@@ -85,33 +114,22 @@ export default function WatchlistPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-          Paper Portfolio Summary
-        </h2>
-        <div className="flex gap-8">
-          <div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Items
-            </div>
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-              {items.length}
-            </div>
+      <div className="app-card p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">
+              Watchlist
+            </p>
+            <h1 className="font-display text-2xl text-slate-900">
+              Paper Portfolio
+            </h1>
           </div>
-          <div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Hypothetical (\u20AC10/idea)
+          <div className="flex flex-wrap gap-3">
+            <div className="app-pill">
+              {items.length} items
             </div>
-            <div
-              className={`text-lg font-semibold ${
-                totalReturn >= 0
-                  ? 'text-green-600 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
-              }`}
-            >
-              {totalReturn >= 0 ? '+' : ''}\u20AC{totalReturn.toFixed(2)} (
-              {totalReturnPercent >= 0 ? '+' : ''}
-              {totalReturnPercent.toFixed(2)}%)
+            <div className={`app-pill ${totalReturn >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {totalReturn >= 0 ? '+' : ''}&euro;{totalReturn.toFixed(2)} ({totalReturnPercent >= 0 ? '+' : ''}{totalReturnPercent.toFixed(2)}%)
             </div>
           </div>
         </div>
@@ -122,6 +140,7 @@ export default function WatchlistPage() {
           <WatchlistItemCard
             key={item.id}
             id={item.id}
+            ideaId={item.ideaId}
             ticker={item.ticker}
             companyName={item.companyName}
             oneLiner={item.oneLiner}
@@ -130,8 +149,11 @@ export default function WatchlistPage() {
             currentPrice={item.currentPrice}
             currency={item.currency}
             changePercent={item.changePercent}
+            changeAbsolute={item.changeAbsolute}
+            priceHistory={item.priceHistory}
             addedAt={item.addedAt}
             onRemove={handleRemove}
+            onAddToPortfolio={handleAddToPortfolio}
           />
         ))}
       </div>

@@ -1,6 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { AreaChart } from '@/components/ui/AreaChart'
+
+interface HoldingAdvice {
+  action: 'buy' | 'sell' | 'hold'
+  reasoning: string
+  confidence: number
+}
 
 interface HoldingCardProps {
   id: string
@@ -13,8 +20,16 @@ interface HoldingCardProps {
   gainLoss: number
   gainLossPercent: number
   notes: string | null
+  priceHistory?: number[]
+  advice?: HoldingAdvice | null
   onEdit: (id: string, data: { quantity?: number; notes?: string | null }) => void
   onDelete: (id: string) => void
+}
+
+const ADVICE_STYLES = {
+  buy: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', label: 'Buy more' },
+  sell: { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', label: 'Sell' },
+  hold: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', label: 'Hold' },
 }
 
 export function HoldingCard({
@@ -28,6 +43,8 @@ export function HoldingCard({
   gainLoss,
   gainLossPercent,
   notes,
+  priceHistory,
+  advice,
   onEdit,
   onDelete,
 }: HoldingCardProps) {
@@ -37,6 +54,7 @@ export function HoldingCard({
 
   const isGain = gainLossPercent > 0
   const isLoss = gainLossPercent < 0
+  const totalValue = quantity * currentPrice
 
   function handleSave() {
     const newQuantity = parseFloat(editQuantity)
@@ -55,17 +73,21 @@ export function HoldingCard({
     setIsEditing(false)
   }
 
+  // Gain/loss bar width (capped at 100%)
+  const barPercent = Math.min(Math.abs(gainLossPercent), 100)
+
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-      <div className="flex items-start justify-between">
+    <div className="app-card p-4">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-gray-900 dark:text-white">
-              {ticker}
-            </span>
+            <span className="font-mono text-sm font-bold text-slate-900">{ticker}</span>
             {companyName && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {companyName}
+              <span className="text-sm text-slate-500">{companyName}</span>
+            )}
+            {advice && (
+              <span className={`text-[10px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-full border ${ADVICE_STYLES[advice.action].bg} ${ADVICE_STYLES[advice.action].border} ${ADVICE_STYLES[advice.action].text}`}>
+                {ADVICE_STYLES[advice.action].label}
               </span>
             )}
           </div>
@@ -73,23 +95,23 @@ export function HoldingCard({
           {isEditing ? (
             <div className="mt-3 space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Quantity</label>
+                <label className="block text-xs text-slate-500 mb-1">Quantity</label>
                 <input
                   type="number"
                   value={editQuantity}
                   onChange={(e) => setEditQuantity(e.target.value)}
-                  className="w-32 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-32 px-2 py-1 text-sm border border-slate-200 rounded bg-white text-slate-900"
                   step="0.01"
                   min="0.01"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Notes</label>
+                <label className="block text-xs text-slate-500 mb-1">Notes</label>
                 <input
                   type="text"
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-2 py-1 text-sm border border-slate-200 rounded bg-white text-slate-900"
                   placeholder="Optional notes"
                 />
               </div>
@@ -102,7 +124,7 @@ export function HoldingCard({
                 </button>
                 <button
                   onClick={handleCancel}
-                  className="px-3 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                  className="px-3 py-1 text-xs text-slate-600 hover:text-slate-900"
                 >
                   Cancel
                 </button>
@@ -110,30 +132,67 @@ export function HoldingCard({
             </div>
           ) : (
             <>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                <div className="text-gray-500 dark:text-gray-400">
-                  {quantity} shares
+              {/* Key metrics row */}
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Shares</div>
+                  <div className="text-slate-700">{quantity}</div>
                 </div>
-                <div className="text-gray-500 dark:text-gray-400">
-                  Bought: &euro;{purchasePrice.toFixed(2)}
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Avg Cost</div>
+                  <div className="text-slate-700">&euro;{purchasePrice.toFixed(2)}</div>
                 </div>
-                <div className="text-gray-500 dark:text-gray-400">
-                  Now: &euro;{currentPrice.toFixed(2)}
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Now</div>
+                  <div className="text-slate-700">&euro;{currentPrice.toFixed(2)}</div>
                 </div>
-                <div
-                  className={`font-medium ${
-                    isGain
-                      ? 'text-green-600 dark:text-green-400'
-                      : isLoss
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-gray-600 dark:text-gray-400'
-                  }`}
-                >
-                  {isGain ? '+' : ''}&euro;{gainLoss.toFixed(2)} ({isGain ? '+' : ''}
-                  {gainLossPercent.toFixed(2)}%)
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Value</div>
+                  <div className="text-slate-700">&euro;{totalValue.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">P&amp;L</div>
+                  <div
+                    className={`font-semibold ${
+                      isGain ? 'text-emerald-700' : isLoss ? 'text-rose-700' : 'text-slate-600'
+                    }`}
+                  >
+                    {isGain ? '+' : ''}&euro;{gainLoss.toFixed(2)}
+                    <span className="text-xs font-normal ml-1">
+                      ({isGain ? '+' : ''}{gainLossPercent.toFixed(1)}%)
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+
+              {/* Visual gain/loss bar */}
+              <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    isGain ? 'bg-emerald-500' : isLoss ? 'bg-rose-500' : 'bg-slate-300'
+                  }`}
+                  style={{ width: `${barPercent}%` }}
+                />
+              </div>
+
+              {/* Price chart */}
+              {priceHistory && priceHistory.length >= 2 && (
+                <div className="mt-2">
+                  <AreaChart data={priceHistory} height={64} />
+                </div>
+              )}
+
+              {/* Advice reasoning */}
+              {advice && (
+                <div className={`mt-3 p-2.5 rounded-lg ${ADVICE_STYLES[advice.action].bg} border ${ADVICE_STYLES[advice.action].border}`}>
+                  <p className="text-xs text-slate-700">{advice.reasoning}</p>
+                  <span className="text-[10px] text-slate-400 mt-1 inline-block">
+                    {advice.confidence}% confidence
+                  </span>
+                </div>
+              )}
+
+              <div className="mt-2 text-xs text-slate-400">
                 Purchased {new Date(purchaseDate).toLocaleDateString()}
                 {notes && <span className="ml-2 italic">{notes}</span>}
               </div>
@@ -145,13 +204,13 @@ export function HoldingCard({
           <div className="flex gap-2 ml-4">
             <button
               onClick={() => setIsEditing(true)}
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="text-xs text-slate-400 hover:text-slate-600"
             >
               Edit
             </button>
             <button
               onClick={() => onDelete(id)}
-              className="text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+              className="text-xs text-slate-400 hover:text-rose-500"
             >
               Remove
             </button>
