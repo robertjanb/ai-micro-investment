@@ -36,6 +36,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=file:/data/app.db
+RUN apk add --no-cache su-exec
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
@@ -49,13 +50,12 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.js ./next.config.js
-RUN chown -R nextjs:nodejs /app /data
-
-USER nextjs
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && chown -R nextjs:nodejs /app /data
 
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["sh", "-c", "pnpm prisma db push && pnpm start"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
