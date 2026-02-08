@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -36,7 +36,7 @@ model Message {
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   role           String       // 'user' | 'assistant'
-  content        String       @db.Text
+  content        String
   createdAt      DateTime     @default(now())
 }
 
@@ -45,15 +45,15 @@ model Idea {
   ticker          String
   companyName     String
   oneLiner        String
-  thesis          String          @db.Text
-  bearCase        String          @db.Text
+  thesis          String
+  bearCase        String
   confidenceScore Int
   signals         Json
   riskLevel       String          // 'safe' | 'interesting' | 'spicy'
   initialPrice    Float
   currentPrice    Float
   currency        String          @default("EUR")
-  generatedDate   DateTime        @default(now()) @db.Date
+  generatedDate   DateTime        @default(now())
   priceHistory    PriceHistory[]
   watchlistItems  WatchlistItem[]
   holdings        Holding[]
@@ -66,7 +66,7 @@ model Idea {
 
 model DailyIdeaBatch {
   id            String   @id @default(cuid())
-  generatedDate DateTime @unique @db.Date
+  generatedDate DateTime @unique
   createdAt     DateTime @default(now())
 }
 
@@ -105,9 +105,9 @@ model Holding {
   companyName   String?
   quantity      Float
   purchasePrice Float
-  purchaseDate  DateTime         @db.Date
+  purchaseDate  DateTime
   currentPrice  Float
-  notes         String?          @db.Text
+  notes         String?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
@@ -125,9 +125,9 @@ model Recommendation {
   holding     Holding? @relation(fields: [holdingId], references: [id], onDelete: Cascade)
   ticker      String
   action      String   // 'buy' | 'sell' | 'hold'
-  reasoning   String   @db.Text
+  reasoning   String
   confidence  Int
-  generatedAt DateTime @default(now()) @db.Date
+  generatedAt DateTime @default(now())
   createdAt   DateTime @default(now())
 
   @@unique([userId, ticker, generatedAt])
@@ -139,7 +139,7 @@ model CronJobStatus {
   name          String   @unique
   lastRunAt     DateTime?
   lastSuccessAt DateTime?
-  lastError     String?  @db.Text
+  lastError     String?
   lastSummary   Json?
   updatedAt     DateTime @updatedAt
 }

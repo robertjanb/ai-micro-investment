@@ -2,21 +2,18 @@ version: '3.8'
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/robertjanb/ai-micro-investment:latest
     container_name: ai-micro-investment
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-file:/data/app.db}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - DATABASE_URL=file:/data/app.db
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - AI_MODEL=${AI_MODEL:-anthropic/claude-sonnet-4-20250514}
+      - DATA_SOURCE=${DATA_SOURCE:-real}
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
     volumes:
-      - app_data:/data
-
-volumes:
-  app_data:
+      - /mnt/user/appdata/ai-micro-investment:/data
