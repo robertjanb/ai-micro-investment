@@ -279,6 +279,43 @@ Guidelines:
   - signals.supplyChain: true if supply chain, logistics, or production factors are relevant`
 }
 
+export function dailyBriefingPrompt(
+  holdings: PortfolioHolding[],
+  newsItems: Array<{ ticker: string; headline: string; summary: string; source: string; datetime: string }>
+): string {
+  const holdingsText = holdings.length > 0
+    ? holdings
+        .map((h) => {
+          const name = h.companyName || h.ticker
+          const direction = h.gainLossPercent >= 0 ? '+' : ''
+          return `- ${h.ticker} (${name}): ${h.quantity} shares @ €${h.purchasePrice.toFixed(2)}, now €${h.currentPrice.toFixed(2)} (${direction}${h.gainLossPercent.toFixed(1)}%)`
+        })
+        .join('\n')
+    : 'No current holdings'
+
+  const newsText = newsItems.length > 0
+    ? newsItems
+        .map((n) => `- [${n.ticker}] ${n.headline} (${n.source}, ${n.datetime})${n.summary ? `\n  ${n.summary}` : ''}`)
+        .join('\n')
+    : 'No recent news'
+
+  return `You are a senior finance consultant writing a brief daily market briefing for a client. Based on their portfolio and recent news, write a personalized 3-5 sentence briefing.
+
+Portfolio:
+${holdingsText}
+
+Recent News:
+${newsText}
+
+Guidelines:
+- Be direct and professional. No emojis, no hype language, no exclamation marks.
+- Explain what the news means for the client's specific positions.
+- If there are actionable items or things to watch, mention them.
+- If the news is not particularly relevant, say so briefly rather than forcing significance.
+- Keep the tone measured and informative.
+- Write in plain paragraphs, not bullet points.`
+}
+
 export function contextualizePortfolioPrompt(
   holdings: PortfolioHolding[]
 ): string {

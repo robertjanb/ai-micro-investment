@@ -5,6 +5,8 @@ services:
     image: ghcr.io/robertjanb/ai-micro-investment:latest
     container_name: ai-micro-investment
     restart: unless-stopped
+    networks:
+      - tailscale
     ports:
       - "3000:3000"
     environment:
@@ -17,3 +19,8 @@ services:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
     volumes:
       - /mnt/user/appdata/ai-micro-investment:/data
+
+networks:
+  tailscale:
+    external: true
+    name: tailscale

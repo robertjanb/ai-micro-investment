@@ -35,7 +35,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/ideas')
+    router.push('/dashboard')
     router.refresh()
   }
 

@@ -23,12 +23,18 @@ export default async function MainLayout({
             <div className="flex h-16 items-center justify-between gap-6">
               <div className="flex items-center gap-6">
                 <Link
-                  href="/ideas"
+                  href="/dashboard"
                   className="font-display text-lg text-slate-900 tracking-tight"
                 >
                   Micro-Investment
                 </Link>
                 <nav className="hidden sm:flex items-center gap-2">
+                  <Link
+                    href="/dashboard"
+                    className="px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-600 hover:text-slate-900 rounded-full border border-slate-200 bg-white/70"
+                  >
+                    Home
+                  </Link>
                   <Link
                     href="/ideas"
                     className="px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-600 hover:text-slate-900 rounded-full border border-slate-200 bg-white/70"
@@ -73,6 +79,12 @@ export default async function MainLayout({
 
         <nav className="sm:hidden border-b border-white/40 bg-white/80 backdrop-blur">
           <div className="flex justify-around py-2">
+            <Link
+              href="/dashboard"
+              className="text-xs uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 px-3 py-2"
+            >
+              Home
+            </Link>
             <Link
               href="/ideas"
               className="text-xs uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 px-3 py-2"
