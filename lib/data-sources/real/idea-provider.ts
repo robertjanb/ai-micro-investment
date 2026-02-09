@@ -157,13 +157,20 @@ export class RealIdeaProvider implements IdeaProvider {
     const allCandidates: string[] = []
 
     // Try to get stocks from different sources
-    const sources = [
+    const sources: Array<() => Promise<string[]>> = [
       () => this.getTrendingStocks(config),
-      () => this.getScreenerStocks('day_gainers'),
-      () => this.getScreenerStocks('most_actives'),
-      () => this.getScreenerStocks('small_cap_gainers'),
-      () => this.getScreenerStocks('undervalued_growth_stocks'),
+      () => this.searchByMarketAndPrice(config),
     ]
+
+    // Only include US-specific screeners if US is in the selected markets
+    if (config.markets.includes('US')) {
+      sources.push(
+        () => this.getScreenerStocks('day_gainers'),
+        () => this.getScreenerStocks('most_actives'),
+        () => this.getScreenerStocks('small_cap_gainers'),
+        () => this.getScreenerStocks('undervalued_growth_stocks'),
+      )
+    }
 
     for (const source of sources) {
       try {
@@ -181,6 +188,57 @@ export class RealIdeaProvider implements IdeaProvider {
     const shuffled = unique.sort(() => Math.random() - 0.5)
 
     return shuffled.slice(0, count)
+  }
+
+  /**
+   * Search for stocks in the configured markets that match price/cap filters.
+   * Uses Yahoo Finance search and quote to find candidates that actually fit
+   * the user's preferences, instead of relying on US-only screeners.
+   */
+  private async searchByMarketAndPrice(config: IdeaConfigData): Promise<string[]> {
+    const cacheKey = `search_${config.markets.join(',')}_${config.minPriceEur}_${config.maxPriceEur}`
+    const cached = screenerCache.get(cacheKey)
+    if (cached && Date.now() - cached.timestamp < SCREENER_CACHE_TTL) {
+      return cached.tickers
+    }
+
+    const tickers: string[] = []
+    const markets = getMarkets(config)
+
+    // Search terms that tend to surface a variety of stocks in each market
+    const searchTerms = ['bank', 'energy', 'tech', 'pharma', 'telecom', 'retail', 'auto', 'insurance', 'food', 'real estate']
+
+    for (const market of markets) {
+      if (market.suffix === '') continue // Skip US — handled by screeners
+
+      for (const term of searchTerms) {
+        try {
+          const results = await yahooFinance.search(term, {
+            newsCount: 0,
+            quotesCount: 10,
+          }, { validateResult: false }) as { quotes?: Array<{ symbol?: string; exchange?: string; quoteType?: string }> }
+
+          if (results?.quotes) {
+            const marketSuffix = market.suffix
+            const matched = results.quotes
+              .filter((q) => {
+                if (!q.symbol || q.quoteType !== 'EQUITY') return false
+                // Match by suffix (e.g. .DE, .PA, .AS, .L)
+                return q.symbol.endsWith(marketSuffix)
+              })
+              .map((q) => q.symbol!)
+
+            tickers.push(...matched)
+          }
+        } catch (error) {
+          console.warn(`Search failed for "${term}" in ${market.region}:`, error)
+        }
+      }
+    }
+
+    const unique = Array.from(new Set(tickers))
+    screenerCache.set(cacheKey, { tickers: unique, timestamp: Date.now() })
+    return unique
   }
 
   private async getTrendingStocks(config: IdeaConfigData): Promise<string[]> {
@@ -312,7 +370,15 @@ export class RealIdeaProvider implements IdeaProvider {
     const reasons: Record<string, number> = {}
     const bump = (key: string) => { reasons[key] = (reasons[key] || 0) + 1 }
 
+    // Build set of allowed exchange suffixes for market filtering
+    const allowedSuffixes = new Set(config.markets.map((m) => MARKET_SUFFIXES[m] ?? ''))
+
     const filtered = candidates.filter((c) => {
+      // Filter by market — check if ticker suffix matches a selected market
+      const dotIndex = c.ticker.indexOf('.')
+      const tickerSuffix = dotIndex >= 0 ? c.ticker.substring(dotIndex) : ''
+      if (!allowedSuffixes.has(tickerSuffix)) { bump('wrongMarket'); return false }
+
       // Filter by market cap
       const marketCapEur = c.currency === 'EUR' ? c.marketCap : c.marketCap * usdToEur
       if (config.minMarketCapEur > 0 && marketCapEur < config.minMarketCapEur) { bump('marketCapTooLow'); return false }
