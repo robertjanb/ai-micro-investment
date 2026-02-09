@@ -1,11 +1,12 @@
-import type { RecommendationProvider, RecommendationData, HoldingData, Signals } from '../types'
+import type { RecommendationProvider, RecommendationData, HoldingData, Signals, PerformanceFeedback } from '../types'
 import { getChatCompletion } from '@/lib/ai/claude'
 import { portfolioAnalysisPrompt, type PortfolioHolding } from '@/lib/ai/prompts'
 
 export class RealRecommendationProvider implements RecommendationProvider {
   async generateRecommendations(
     holdings: HoldingData[],
-    ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>
+    ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>,
+    performanceFeedback?: PerformanceFeedback | null
   ): Promise<RecommendationData[]> {
     if (holdings.length === 0 && ideas.length === 0) {
       return []
@@ -21,7 +22,7 @@ export class RealRecommendationProvider implements RecommendationProvider {
       gainLossPercent: h.gainLossPercent,
     }))
 
-    const prompt = portfolioAnalysisPrompt(portfolioHoldings, ideas)
+    const prompt = portfolioAnalysisPrompt(portfolioHoldings, ideas, performanceFeedback)
 
     const response = await getChatCompletion([
       { role: 'user', content: prompt },

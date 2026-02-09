@@ -62,10 +62,21 @@ export interface RecommendationData {
   confidence: number
 }
 
+export interface PerformanceFeedback {
+  totalEvaluated: number
+  overallWinRate: number | null
+  overallAvgReturn: number | null
+  byAction: Array<{ action: string; count: number; winRate: number; avgReturn: number }>
+  byRiskLevel: Array<{ riskLevel: string; count: number; winRate: number; avgReturn: number }>
+  recentMistakes: Array<{ ticker: string; action: string; confidence: number; returnPct: number }>
+  recentSuccesses: Array<{ ticker: string; action: string; confidence: number; returnPct: number }>
+}
+
 export interface RecommendationProvider {
   generateRecommendations(
     holdings: HoldingData[],
-    ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>
+    ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>,
+    performanceFeedback?: PerformanceFeedback | null
   ): Promise<RecommendationData[]>
 }
 

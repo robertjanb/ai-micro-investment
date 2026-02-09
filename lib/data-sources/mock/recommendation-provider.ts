@@ -1,9 +1,10 @@
-import type { RecommendationProvider, RecommendationData, HoldingData, Signals } from '../types'
+import type { RecommendationProvider, RecommendationData, HoldingData, Signals, PerformanceFeedback } from '../types'
 
 export class MockRecommendationProvider implements RecommendationProvider {
   async generateRecommendations(
     holdings: HoldingData[],
-    ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>
+    ideas: Array<{ ticker: string; companyName: string; signals: Signals; confidenceScore: number }>,
+    _performanceFeedback?: PerformanceFeedback | null
   ): Promise<RecommendationData[]> {
     const recommendations: RecommendationData[] = []
 

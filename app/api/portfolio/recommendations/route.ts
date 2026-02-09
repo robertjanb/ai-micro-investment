@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getRecommendationProvider, getPriceProvider } from '@/lib/data-sources'
 import type { HoldingData, Signals } from '@/lib/data-sources/types'
 import { getConfidenceBucket, isPerformanceProofEnabled, normalizeDate } from '@/lib/performance'
+import { getPerformanceFeedback } from '@/lib/performance-feedback'
 import { ensureMockPerformanceHistory } from '@/lib/mock/performance-history'
 
 export async function GET(request: NextRequest) {
@@ -175,9 +176,17 @@ export async function GET(request: NextRequest) {
       confidenceScore: i.confidenceScore,
     }))
 
+    // Fetch performance feedback for AI learning (best-effort)
+    let performanceFeedback = null
+    try {
+      performanceFeedback = await getPerformanceFeedback(session.user.id)
+    } catch {
+      // Performance feedback is optional — don't block recommendations
+    }
+
     // Generate recommendations
     const provider = getRecommendationProvider()
-    const recommendations = await provider.generateRecommendations(holdingData, ideaData)
+    const recommendations = await provider.generateRecommendations(holdingData, ideaData, performanceFeedback)
 
     // Store recommendations in database
     const storedRecommendations = await Promise.all(

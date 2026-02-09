@@ -128,7 +128,8 @@ export interface PortfolioHolding {
 
 export function portfolioAnalysisPrompt(
   holdings: PortfolioHolding[],
-  ideas: Array<{ ticker: string; companyName: string; signals: { hiring: boolean; earnings: boolean; regulatory: boolean; supplyChain: boolean }; confidenceScore: number }>
+  ideas: Array<{ ticker: string; companyName: string; signals: { hiring: boolean; earnings: boolean; regulatory: boolean; supplyChain: boolean }; confidenceScore: number }>,
+  performanceFeedback?: PerformanceFeedbackData | null
 ): string {
   const holdingsText = holdings
     .map((h) => {
@@ -148,8 +149,12 @@ export function portfolioAnalysisPrompt(
     })
     .join('\n')
 
-  return `Analyze the following portfolio and today's ideas to generate buy/sell/hold recommendations.
+  const feedbackSection = performanceFeedback
+    ? performanceFeedbackSection(performanceFeedback)
+    : ''
 
+  return `Analyze the following portfolio and today's ideas to generate buy/sell/hold recommendations.
+${feedbackSection}
 Current Holdings:
 ${holdingsText || 'No current holdings'}
 
@@ -175,8 +180,63 @@ Guidelines:
 - From today's ideas, suggest at most 2 buy candidates that aren't already held
 - Only suggest buys for ideas with confidence >= 65%
 - Confidence scores should be 50-90
-- Keep reasoning concise but substantive
+- Keep reasoning concise but substantive${performanceFeedback ? '\n- Explicitly reference your past performance data when it is relevant to a specific recommendation' : ''}
 - Return ONLY valid JSON, no additional text`
+}
+
+export interface PerformanceFeedbackData {
+  totalEvaluated: number
+  overallWinRate: number | null
+  overallAvgReturn: number | null
+  byAction: Array<{ action: string; count: number; winRate: number; avgReturn: number }>
+  byRiskLevel: Array<{ riskLevel: string; count: number; winRate: number; avgReturn: number }>
+  recentMistakes: Array<{ ticker: string; action: string; confidence: number; returnPct: number }>
+  recentSuccesses: Array<{ ticker: string; action: string; confidence: number; returnPct: number }>
+}
+
+export function performanceFeedbackSection(feedback: PerformanceFeedbackData): string {
+  const actionBreakdown = feedback.byAction
+    .map((a) => `  - ${a.action}: ${a.winRate}% win rate, avg return ${a.avgReturn >= 0 ? '+' : ''}${a.avgReturn}% (${a.count} evaluated)`)
+    .join('\n')
+
+  const riskBreakdown = feedback.byRiskLevel
+    .map((r) => `  - ${r.riskLevel}: ${r.winRate}% win rate, avg return ${r.avgReturn >= 0 ? '+' : ''}${r.avgReturn}% (${r.count} evaluated)`)
+    .join('\n')
+
+  const mistakes = feedback.recentMistakes.length > 0
+    ? feedback.recentMistakes
+        .map((m) => `  - ${m.ticker} (${m.action}, ${m.confidence}% confidence): ${m.returnPct >= 0 ? '+' : ''}${m.returnPct}%`)
+        .join('\n')
+    : '  None yet'
+
+  const successes = feedback.recentSuccesses.length > 0
+    ? feedback.recentSuccesses
+        .map((s) => `  - ${s.ticker} (${s.action}, ${s.confidence}% confidence): ${s.returnPct >= 0 ? '+' : ''}${s.returnPct}%`)
+        .join('\n')
+    : '  None yet'
+
+  return `
+PAST PERFORMANCE REVIEW (7-day evaluation window, ${feedback.totalEvaluated} recommendations scored):
+Overall: ${feedback.overallWinRate}% win rate, avg return ${(feedback.overallAvgReturn ?? 0) >= 0 ? '+' : ''}${feedback.overallAvgReturn}%
+
+By action type:
+${actionBreakdown}
+
+By risk level:
+${riskBreakdown}
+
+Recent mistakes to learn from:
+${mistakes}
+
+Recent successes to build on:
+${successes}
+
+Use this track record to calibrate your recommendations:
+- If a particular action type (buy/sell/hold) has a low win rate, be more cautious with it
+- If confidence scores are often too high for losing trades, lower your confidence estimates
+- If a risk level consistently underperforms, factor that into your reasoning
+- Learn from recent mistakes: avoid repeating similar patterns
+- Build on what works: lean into patterns from recent successes`
 }
 
 export interface RealStockDataForPrompt {
