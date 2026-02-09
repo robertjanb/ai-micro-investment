@@ -61,6 +61,64 @@ function getMarkets(config: IdeaConfigData) {
   }))
 }
 
+const MARKET_FALLBACK_TICKERS: Record<string, string[]> = {
+  US: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'BRK-B', 'JPM', 'XOM', 'JNJ',
+       'F', 'T', 'INTC', 'SNAP', 'PLTR', 'SOFI', 'NIO', 'RIVN', 'LCID', 'WBD'],
+  DE: ['SAP.DE', 'SIE.DE', 'ALV.DE', 'BAS.DE', 'BMW.DE', 'MBG.DE', 'VOW3.DE', 'DB1.DE', 'DTE.DE', 'IFX.DE',
+       'TUI1.DE', 'LHA.DE', 'AT1.DE', 'BYW6.DE', 'PBB.DE', 'NDA.DE', '1COV.DE', 'SRT3.DE', 'GXI.DE', 'FPE3.DE'],
+  FR: ['MC.PA', 'OR.PA', 'TTE.PA', 'SAN.PA', 'AIR.PA', 'BNP.PA', 'SU.PA', 'DG.PA', 'ORA.PA', 'EN.PA',
+       'ACA.PA', 'RNO.PA', 'GLE.PA', 'UBI.PA', 'CGG.PA', 'ATOS.PA', 'DBV.PA', 'VIE.PA'],
+  NL: ['AD.AS', 'AALB.AS', 'ABN.AS', 'AKZA.AS', 'ASM.AS', 'ASML.AS', 'ASRNL.AS', 'BESI.AS', 'INGA.AS', 'KPN.AS', 'NN.AS', 'PHIA.AS', 'RAND.AS', 'SHELL.AS', 'WKL.AS',
+       'BAMNB.AS', 'OCI.AS', 'APAM.AS', 'SBMO.AS', 'ARCAD.AS', 'HEIJM.AS'],
+  GB: ['AZN.L', 'ULVR.L', 'SHEL.L', 'RIO.L', 'HSBA.L', 'BARC.L', 'BP.L', 'GSK.L', 'DGE.L', 'VOD.L',
+       'LLOY.L', 'IAG.L', 'EZJ.L', 'PHNX.L', 'MNG.L', 'NWG.L', 'LGEN.L', 'RR.L', 'AAL.L', 'AVV.L'],
+}
+
+const NON_US_SUFFIXES = Array.from(
+  new Set(
+    Object.entries(MARKET_SUFFIXES)
+      .filter(([market, suffix]) => market !== 'US' && suffix)
+      .map(([, suffix]) => suffix.toUpperCase())
+  )
+)
+
+function isUsTicker(ticker: string): boolean {
+  const normalized = ticker.toUpperCase()
+
+  if (normalized.startsWith('^')) return false // Indexes
+  if (NON_US_SUFFIXES.some((suffix) => normalized.endsWith(suffix))) return false
+  if (normalized.includes('.')) return false
+
+  return /^[A-Z0-9-]+$/.test(normalized)
+}
+
+function isTickerAllowedForMarkets(ticker: string, markets: string[]): boolean {
+  const normalized = ticker.toUpperCase()
+  const allowUS = markets.includes('US')
+  const allowedNonUsSuffixes = markets
+    .map((market) => MARKET_SUFFIXES[market])
+    .filter((suffix): suffix is string => Boolean(suffix))
+    .map((suffix) => suffix.toUpperCase())
+
+  if (allowUS && isUsTicker(normalized)) {
+    return true
+  }
+
+  if (allowedNonUsSuffixes.length > 0) {
+    return allowedNonUsSuffixes.some((suffix) => normalized.endsWith(suffix))
+  }
+
+  return false
+}
+
+function getFallbackTickers(config: IdeaConfigData): string[] {
+  return config.markets.flatMap((market) => MARKET_FALLBACK_TICKERS[market] || [])
+}
+
+function getTickerBase(ticker: string): string {
+  return ticker.toUpperCase().split('.')[0]
+}
+
 // Type definitions for Yahoo Finance responses
 interface YahooQuoteSummary {
   price?: {
@@ -110,6 +168,12 @@ interface YahooTrendingResult {
   }>
 }
 
+interface YahooQuote {
+  regularMarketPrice?: number
+  regularMarketPreviousClose?: number
+  currency?: string
+}
+
 export class RealIdeaProvider implements IdeaProvider {
   private finnhub: FinnhubProvider
 
@@ -143,7 +207,11 @@ export class RealIdeaProvider implements IdeaProvider {
     const fullyEnriched = await this.enrichWithFinnhub(filteredCandidates)
 
     // 5. Generate AI analysis
-    const ideas = await this.generateAnalysis(fullyEnriched)
+    let ideas = await this.generateAnalysis(fullyEnriched)
+    if (ideas.length === 0 && fullyEnriched.length > 0) {
+      console.warn('AI produced no mappable ideas; using deterministic fallback ideas')
+      ideas = this.buildFallbackIdeas(fullyEnriched, count)
+    }
 
     // 6. Post-filter by risk levels if configured
     if (config.riskLevels.length > 0) {
@@ -151,6 +219,32 @@ export class RealIdeaProvider implements IdeaProvider {
     }
 
     return ideas
+  }
+
+  private buildFallbackIdeas(stocks: EnrichedStockData[], count: number): Idea[] {
+    return stocks.slice(0, count).map((stock) => {
+      const marketCapEur = stock.currency === 'EUR' ? stock.marketCap : stock.marketCap * usdToEur
+      const riskLevel: Idea['riskLevel'] =
+        marketCapEur >= 20_000_000_000 ? 'safe' : marketCapEur >= 2_000_000_000 ? 'interesting' : 'spicy'
+
+      return {
+        ticker: stock.ticker,
+        companyName: stock.companyName,
+        oneLiner: `${stock.companyName} (${stock.ticker}) is trading near €${stock.priceEur.toFixed(2)} with active market coverage.`,
+        thesis: `${stock.companyName} operates in ${stock.sector}. Current market data shows a price of €${stock.priceEur.toFixed(2)} and a market cap around €${(marketCapEur / 1e9).toFixed(2)}B. This can be a watchlist candidate if upcoming catalysts and sector momentum improve.`,
+        bearCase: `Key risks include valuation compression, weaker sector demand, and execution risk if earnings or margins disappoint. Treat this as a screening result, not a complete thesis.`,
+        confidenceScore: 58,
+        signals: {
+          hiring: false,
+          earnings: Boolean(stock.upcomingEarnings),
+          regulatory: false,
+          supplyChain: false,
+        },
+        riskLevel,
+        initialPrice: stock.priceEur,
+        currency: 'EUR',
+      }
+    })
   }
 
   private async getCandidateStocks(count: number, config: IdeaConfigData): Promise<string[]> {
@@ -181,11 +275,16 @@ export class RealIdeaProvider implements IdeaProvider {
       }
     }
 
+    // Add a deterministic market universe fallback so strict market filters
+    // still have candidates even when trend/screener endpoints are sparse.
+    allCandidates.push(...getFallbackTickers(config))
+
     // Remove duplicates and return requested count
     const unique = Array.from(new Set(allCandidates))
+    const marketFiltered = unique.filter((ticker) => isTickerAllowedForMarkets(ticker, config.markets))
 
     // Shuffle to get variety
-    const shuffled = unique.sort(() => Math.random() - 0.5)
+    const shuffled = marketFiltered.sort(() => Math.random() - 0.5)
 
     return shuffled.slice(0, count)
   }
@@ -242,7 +341,7 @@ export class RealIdeaProvider implements IdeaProvider {
   }
 
   private async getTrendingStocks(config: IdeaConfigData): Promise<string[]> {
-    const cacheKey = 'trending'
+    const cacheKey = `trending:${[...config.markets].sort().join(',')}`
     const cached = screenerCache.get(cacheKey)
     if (cached && Date.now() - cached.timestamp < SCREENER_CACHE_TTL) {
       return cached.tickers
@@ -305,6 +404,8 @@ export class RealIdeaProvider implements IdeaProvider {
   private async enrichWithFundamentals(tickers: string[]): Promise<RealStockData[]> {
     const enriched: RealStockData[] = []
     const usdEur = await getUsdToEur()
+    let missingPrice = 0
+    let fetchErrors = 0
 
     for (const ticker of tickers) {
       // Check cache
@@ -319,7 +420,8 @@ export class RealIdeaProvider implements IdeaProvider {
           modules: ['price', 'summaryDetail', 'assetProfile', 'financialData'],
         }, { validateResult: false }) as YahooQuoteSummary
 
-        if (!summary || !summary.price || !summary.price.regularMarketPrice) {
+        if (!summary || !summary.price) {
+          missingPrice++
           continue
         }
 
@@ -327,9 +429,28 @@ export class RealIdeaProvider implements IdeaProvider {
         const detail = summary.summaryDetail || {}
         const profile = summary.assetProfile || {}
 
-        // Determine currency and convert to EUR
-        const currency = price.currency || 'USD'
-        const priceValue = price.regularMarketPrice!
+        // Determine currency and convert to EUR.
+        // Some non-US symbols can miss regularMarketPrice in quoteSummary;
+        // fall back to quote() and previous close to avoid false negatives.
+        let currency = price.currency || 'USD'
+        let priceValue = price.regularMarketPrice ?? null
+        if (priceValue === null || priceValue <= 0) {
+          try {
+            const quote = await yahooFinance.quote(ticker, {}, { validateResult: false }) as YahooQuote
+            const fallbackPrice = quote.regularMarketPrice ?? quote.regularMarketPreviousClose ?? null
+            if (fallbackPrice !== null && fallbackPrice > 0) {
+              priceValue = fallbackPrice
+              currency = quote.currency || currency
+            }
+          } catch {
+            // Keep priceValue as null; handled below
+          }
+        }
+        if (priceValue === null || priceValue <= 0) {
+          missingPrice++
+          continue
+        }
+
         const priceEur = currency === 'EUR' ? priceValue : priceValue * usdEur
 
         const financialData = summary.financialData || {}
@@ -359,8 +480,15 @@ export class RealIdeaProvider implements IdeaProvider {
         fundamentalsCache.set(ticker, { data: stockData, timestamp: Date.now() })
         enriched.push(stockData)
       } catch (error) {
+        fetchErrors++
         console.warn(`Failed to fetch fundamentals for ${ticker}:`, error)
       }
+    }
+
+    if (enriched.length === 0 && tickers.length > 0) {
+      console.warn(
+        `No fundamentals enriched (tickers=${tickers.length}, missingPrice=${missingPrice}, fetchErrors=${fetchErrors})`
+      )
     }
 
     return enriched
@@ -374,10 +502,8 @@ export class RealIdeaProvider implements IdeaProvider {
     const allowedSuffixes = new Set(config.markets.map((m) => MARKET_SUFFIXES[m] ?? ''))
 
     const filtered = candidates.filter((c) => {
-      // Filter by market — check if ticker suffix matches a selected market
-      const dotIndex = c.ticker.indexOf('.')
-      const tickerSuffix = dotIndex >= 0 ? c.ticker.substring(dotIndex) : ''
-      if (!allowedSuffixes.has(tickerSuffix)) { bump('wrongMarket'); return false }
+      // Filter by selected markets based on ticker suffix / US symbol rules
+      if (!isTickerAllowedForMarkets(c.ticker, config.markets)) { bump('marketNotAllowed'); return false }
 
       // Filter by market cap
       const marketCapEur = c.currency === 'EUR' ? c.marketCap : c.marketCap * usdToEur
@@ -463,10 +589,32 @@ export class RealIdeaProvider implements IdeaProvider {
       throw new Error('AI response missing ideas array')
     }
 
-    // Map AI response to Idea interface, using AI-classified signals
-    const ideas: Idea[] = parsed.ideas.map((aiIdea) => {
-      const ticker = String(aiIdea.ticker || '')
-      const stockData = stocks.find((s) => s.ticker === ticker)
+    const stockByTicker = new Map(stocks.map((s) => [s.ticker.toUpperCase(), s]))
+    const stockByBase = new Map<string, EnrichedStockData | null>()
+    for (const stock of stocks) {
+      const base = getTickerBase(stock.ticker)
+      const existing = stockByBase.get(base)
+      if (existing === undefined) {
+        stockByBase.set(base, stock)
+      } else if (existing !== stock) {
+        // Ambiguous base symbol across markets; disable base fallback for this symbol.
+        stockByBase.set(base, null)
+      }
+    }
+    const seenTickers = new Set<string>()
+
+    // Map AI response to Idea interface, but only accept tickers from our candidate list.
+    const ideas: Idea[] = parsed.ideas.flatMap((aiIdea) => {
+      const rawTicker = String(aiIdea.ticker || '')
+      const ticker = rawTicker.toUpperCase()
+      const stockData = stockByTicker.get(ticker) ?? stockByBase.get(getTickerBase(ticker)) ?? null
+      if (!stockData) {
+        return []
+      }
+      if (seenTickers.has(stockData.ticker)) {
+        return []
+      }
+      seenTickers.add(stockData.ticker)
 
       // Read signals from AI response, fall back to all-false
       const aiSignals = aiIdea.signals as Partial<Signals> | undefined
@@ -477,8 +625,8 @@ export class RealIdeaProvider implements IdeaProvider {
         supplyChain: aiSignals?.supplyChain === true,
       }
 
-      return {
-        ticker,
+      return [{
+        ticker: stockData.ticker,
         companyName: String(aiIdea.companyName || stockData?.companyName || ''),
         oneLiner: String(aiIdea.oneLiner || ''),
         thesis: String(aiIdea.thesis || ''),
@@ -488,9 +636,9 @@ export class RealIdeaProvider implements IdeaProvider {
         riskLevel: (['safe', 'interesting', 'spicy'].includes(aiIdea.riskLevel as string)
           ? aiIdea.riskLevel
           : 'interesting') as Idea['riskLevel'],
-        initialPrice: stockData?.priceEur || Number(aiIdea.initialPrice) || 50,
+        initialPrice: stockData.priceEur || Number(aiIdea.initialPrice) || 50,
         currency: 'EUR',
-      }
+      }]
     })
 
     return ideas
