@@ -10,6 +10,7 @@ interface HistoryIdea {
   oneLiner: string
   riskLevel: string
   confidenceScore: number
+  signals: Record<string, boolean>
   initialPrice: number
   currentPrice: number
   currency: string
@@ -17,6 +18,19 @@ interface HistoryIdea {
   hypotheticalReturn: number
   priceHistory: number[]
   generatedDate: string
+}
+
+const RISK_STYLES: Record<string, string> = {
+  safe: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  interesting: 'bg-amber-50 text-amber-700 border-amber-200',
+  spicy: 'bg-rose-50 text-rose-700 border-rose-200',
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  hiring: 'Hiring',
+  earnings: 'Earnings',
+  regulatory: 'Regulatory',
+  supplyChain: 'Supply Chain',
 }
 
 type Filter = 'all' | 'gains' | 'losses'
@@ -188,7 +202,12 @@ export default function HistoryPage() {
             <div className="space-y-2">
               {group.ideas.map((idea) => {
                 const isGain = idea.changePercent > 0
-                const symbol = idea.currency === 'EUR' ? '\u20AC' : '$'
+                const symbol = idea.currency === 'GBP' || idea.currency === 'GBp' ? '\u00A3' : idea.currency === 'USD' ? '$' : '\u20AC'
+                const activeSignals = idea.signals
+                  ? (Object.entries(idea.signals) as [string, boolean][])
+                      .filter(([, v]) => v)
+                      .map(([k]) => SIGNAL_LABELS[k] || k)
+                  : []
 
                 return (
                   <div key={idea.id} className="app-card p-4">
@@ -201,10 +220,28 @@ export default function HistoryPage() {
                           <span className="text-sm text-slate-500">
                             {idea.companyName}
                           </span>
+                          <span className={`text-[10px] uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-full border ${RISK_STYLES[idea.riskLevel] || RISK_STYLES.safe}`}>
+                            {idea.riskLevel}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {idea.confidenceScore}%
+                          </span>
                         </div>
                         <div className="text-sm text-slate-600 mt-1">
                           {idea.oneLiner}
                         </div>
+                        {activeSignals.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {activeSignals.map((label) => (
+                              <span
+                                key={label}
+                                className="text-[10px] uppercase tracking-[0.15em] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200"
+                              >
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 ml-4 shrink-0">
                         <div className="text-right">
