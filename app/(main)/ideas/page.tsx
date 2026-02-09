@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { IdeaCard } from '@/components/ideas/IdeaCard'
+import { IdeaPreferences } from '@/components/ideas/IdeaPreferences'
 import { ChatInterface } from '@/components/chat/ChatInterface'
 import { WelcomeMessage } from '@/components/onboarding/WelcomeMessage'
 
@@ -151,6 +152,11 @@ export default function IdeasPage() {
         </div>
       </div>
 
+      <IdeaPreferences onSaved={() => {
+        setIsLoading(true)
+        loadData()
+      }} />
+
       {isFirstVisit && <WelcomeMessage />}
 
       {nudgeMessage && (
@@ -161,10 +167,7 @@ export default function IdeasPage() {
 
       {ideasMessage && ideas.length === 0 && (
         <div className="app-card px-4 py-3 text-sm text-slate-600 border border-amber-200 bg-amber-50/50">
-          {ideasMessage}{' '}
-          <a href="/settings" className="text-blue-600 underline hover:text-blue-700">
-            Open Settings
-          </a>
+          {ideasMessage} Adjust your preferences above and save to regenerate.
         </div>
       )}
 

@@ -2,10 +2,21 @@ import type { IdeaProvider, Idea, IdeaDetails, PricePoint } from '../types'
 import { getChatCompletion } from '@/lib/ai/claude'
 import { ideaGenerationPrompt } from '@/lib/ai/prompts'
 import { prisma } from '@/lib/prisma'
+import { getIdeaConfig } from '@/lib/idea-config'
 
 export class MockIdeaProvider implements IdeaProvider {
   async generateDailyIdeas(count: number): Promise<Idea[]> {
-    const prompt = ideaGenerationPrompt(count)
+    const config = await getIdeaConfig()
+    const prompt = ideaGenerationPrompt(count, {
+      markets: config.markets,
+      sectors: config.sectors,
+      riskLevels: config.riskLevels,
+      minPriceEur: config.minPriceEur,
+      maxPriceEur: config.maxPriceEur,
+      minMarketCapEur: config.minMarketCapEur,
+      maxMarketCapEur: config.maxMarketCapEur,
+      minDividendYield: config.minDividendYield,
+    })
 
     const response = await getChatCompletion([
       { role: 'user', content: prompt },

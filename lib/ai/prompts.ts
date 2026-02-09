@@ -19,7 +19,55 @@ Behavior guidelines:
 
 You have access to today's investment ideas. When discussing them, reference the specific data (ticker, confidence score, signals) rather than speaking in generalities.`
 
-export function ideaGenerationPrompt(count: number): string {
+export interface IdeaGenerationPreferences {
+  markets: string[]
+  sectors: string[]
+  riskLevels: string[]
+  minPriceEur: number
+  maxPriceEur: number | null
+  minMarketCapEur: number
+  maxMarketCapEur: number | null
+  minDividendYield: number | null
+}
+
+const MARKET_LABELS: Record<string, string> = {
+  US: 'United States',
+  DE: 'Germany',
+  FR: 'France',
+  NL: 'Netherlands',
+  GB: 'United Kingdom',
+}
+
+export function ideaGenerationPrompt(count: number, prefs?: IdeaGenerationPreferences): string {
+  const marketConstraint = prefs?.markets?.length
+    ? `- Companies should be based in or primarily operate in: ${prefs.markets.map((m) => MARKET_LABELS[m] || m).join(', ')}`
+    : '- Mix of international companies'
+
+  const sectorConstraint = prefs?.sectors?.length
+    ? `- Sectors MUST be limited to: ${prefs.sectors.join(', ')}. Do NOT generate ideas outside these sectors.`
+    : '- Mix of sectors: tech, biotech, energy, consumer, industrial, etc.'
+
+  const riskConstraint = prefs?.riskLevels?.length
+    ? `- Risk levels MUST be one of: ${prefs.riskLevels.join(', ')}. Do NOT use other risk levels.`
+    : '- Risk levels: "safe", "interesting", or "spicy"'
+
+  const minPrice = prefs?.minPriceEur ?? 5
+  const maxPrice = prefs?.maxPriceEur
+  const priceConstraint = maxPrice
+    ? `- Prices: realistic EUR amounts between ${minPrice} and ${maxPrice}`
+    : `- Prices: realistic EUR amounts starting from ${minPrice}`
+
+  const extras: string[] = []
+  if (prefs?.minMarketCapEur && prefs.minMarketCapEur > 0) {
+    extras.push(`- Companies should have a market cap of at least €${(prefs.minMarketCapEur / 1_000_000).toFixed(0)}M`)
+  }
+  if (prefs?.maxMarketCapEur) {
+    extras.push(`- Companies should have a market cap no larger than €${(prefs.maxMarketCapEur / 1_000_000).toFixed(0)}M`)
+  }
+  if (prefs?.minDividendYield) {
+    extras.push(`- Companies should pay dividends with a yield of at least ${(prefs.minDividendYield * 100).toFixed(1)}%`)
+  }
+
   return `Generate ${count} fictional but plausible investment ideas. Each idea should be for a realistic-sounding company (can be inspired by real sectors but must be fictional).
 
 Return ONLY valid JSON in this exact format, with no additional text:
@@ -48,13 +96,14 @@ Return ONLY valid JSON in this exact format, with no additional text:
 Requirements:
 - Tickers: 3-5 uppercase letters, fictional
 - Confidence scores: 40-90 range, with most between 55-75
-- Risk levels: "safe", "interesting", or "spicy"
-- Prices: realistic EUR amounts between 5 and 500
+${riskConstraint}
+${priceConstraint}
 - Signals: at least 2 should be true per idea, but not all 4
-- Mix of sectors: tech, biotech, energy, consumer, industrial, etc.
+${marketConstraint}
+${sectorConstraint}
 - Each idea should be distinct in sector and thesis
 - Theses should reference specific (fictional) catalysts: new product launches, regulatory approvals, market expansion, etc.
-- Bear cases should be genuinely concerning, not token objections`
+- Bear cases should be genuinely concerning, not token objections${extras.length > 0 ? '\n' + extras.join('\n') : ''}`
 }
 
 export function contextualizeIdeasPrompt(
