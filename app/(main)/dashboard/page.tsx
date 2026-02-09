@@ -139,7 +139,7 @@ export default function DashboardPage() {
       ticker: h.ticker,
       price: h.currentPrice,
       changePercent,
-      currency: h.idea?.currency ?? 'USD',
+      currency: h.idea?.currency ?? 'EUR',
     })
   })
 
@@ -149,7 +149,7 @@ export default function DashboardPage() {
         ticker: w.ticker,
         price: w.currentPrice,
         changePercent: w.changePercent,
-        currency: w.currency ?? 'USD',
+        currency: w.currency ?? 'EUR',
       })
     }
   })
@@ -163,7 +163,7 @@ export default function DashboardPage() {
         ticker: idea.ticker,
         price: idea.currentPrice,
         changePercent,
-        currency: idea.currency ?? 'USD',
+        currency: idea.currency ?? 'EUR',
       })
     }
   })
@@ -176,7 +176,7 @@ export default function DashboardPage() {
       ticker: h.ticker,
       gainLossPercent: h.gainLossPercent,
       currentPrice: h.currentPrice,
-      currency: h.idea?.currency ?? 'USD',
+      currency: h.idea?.currency ?? 'EUR',
     }))
     .sort((a, b) => Math.abs(b.gainLossPercent) - Math.abs(a.gainLossPercent))
     .slice(0, 3)

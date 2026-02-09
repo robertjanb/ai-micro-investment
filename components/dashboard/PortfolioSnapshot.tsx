@@ -41,7 +41,7 @@ export function PortfolioSnapshot({ summary, topMovers }: PortfolioSnapshotProps
 
       <div>
         <span className="font-mono text-2xl font-bold text-slate-900">
-          ${summary.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          €{summary.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
         <span
           className={`ml-2 inline-block text-xs font-medium px-2 py-0.5 rounded-full ${
@@ -69,7 +69,7 @@ export function PortfolioSnapshot({ summary, topMovers }: PortfolioSnapshotProps
                 </span>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-slate-500">
-                    {m.currency === 'GBP' ? '£' : '$'}
+                    {m.currency === 'GBP' || m.currency === 'GBp' ? '£' : m.currency === 'USD' ? '$' : '€'}
                     {m.currentPrice.toFixed(2)}
                   </span>
                   <span

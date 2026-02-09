@@ -87,7 +87,7 @@ function formatPct(value: number | null) {
 }
 
 function formatCurrency(value: number, currency: string) {
-  const symbol = currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '$'
+  const symbol = currency === 'GBP' || currency === 'GBp' ? '£' : currency === 'USD' ? '$' : '€'
   return `${symbol}${value.toFixed(2)}`
 }
 
@@ -100,6 +100,8 @@ async function fetchJSON<T>(url: string): Promise<T | null> {
     return null
   }
 }
+
+const isMockMode = process.env.NEXT_PUBLIC_DATA_SOURCE === 'mock'
 
 export default function PerformancePage() {
   const [overview, setOverview] = useState<OverviewResponse | null>(null)
@@ -127,9 +129,34 @@ export default function PerformancePage() {
     setLoading(false)
   }, [horizon, result, page])
 
+  // Auto-evaluate pending snapshots on page load, then refresh data
   useEffect(() => {
-    load()
-  }, [load])
+    let cancelled = false
+    async function autoEvaluateAndLoad() {
+      try {
+        await fetch('/api/performance/evaluate', { method: 'POST' })
+      } catch {
+        // Evaluation is best-effort
+      }
+      if (!cancelled) {
+        await load()
+      }
+    }
+    autoEvaluateAndLoad()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Reload when filters change (but not on initial mount)
+  const [initialized, setInitialized] = useState(false)
+  useEffect(() => {
+    if (initialized) {
+      load()
+    } else {
+      setInitialized(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [horizon, result, page])
 
   useEffect(() => {
     setPage(1)
@@ -172,6 +199,7 @@ export default function PerformancePage() {
   }
 
   const selectedRows = rows.recommendations
+  const hasData = overview.totals.snapshots > 0
 
   return (
     <div className="space-y-6">
@@ -182,13 +210,15 @@ export default function PerformancePage() {
             <h1 className="font-display text-2xl text-slate-900">Recommendation Outcomes</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={reseedMockData}
-              disabled={isReseeding}
-              className="px-4 py-2 rounded-full border border-slate-300 text-xs uppercase tracking-[0.16em] text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              {isReseeding ? 'Reseeding...' : 'Reseed Mock Data'}
-            </button>
+            {isMockMode && (
+              <button
+                onClick={reseedMockData}
+                disabled={isReseeding}
+                className="px-4 py-2 rounded-full border border-slate-300 text-xs uppercase tracking-[0.16em] text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {isReseeding ? 'Reseeding...' : 'Reseed Mock Data'}
+              </button>
+            )}
             <button
               onClick={runEvaluation}
               disabled={isEvaluating}
@@ -199,15 +229,37 @@ export default function PerformancePage() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <MetricCard label="Snapshots" value={overview.totals.snapshots.toString()} />
-          <MetricCard label="Evaluated" value={overview.totals.evaluated.toString()} />
-          <MetricCard label="Pending" value={overview.totals.pending.toString()} />
-          <MetricCard label="Scored" value={overview.totals.scored.toString()} />
-          <MetricCard label="Stale" value={overview.totals.stale.toString()} />
-        </div>
+        {hasData && (
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <MetricCard label="Snapshots" value={overview.totals.snapshots.toString()} />
+            <MetricCard label="Evaluated" value={overview.totals.evaluated.toString()} />
+            <MetricCard label="Pending" value={overview.totals.pending.toString()} />
+            <MetricCard label="Scored" value={overview.totals.scored.toString()} />
+            <MetricCard label="Stale" value={overview.totals.stale.toString()} />
+          </div>
+        )}
       </div>
 
+      {!hasData && (
+        <div className="app-card p-8 text-center space-y-4">
+          <div className="text-4xl">📊</div>
+          <h2 className="text-lg font-semibold text-slate-800">No performance data yet</h2>
+          <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+            Add stocks to your portfolio, then generate AI recommendations from the portfolio page.
+            Each recommendation is automatically tracked and scored over 1, 7, and 30 day horizons.
+          </p>
+          <a
+            href="/portfolio"
+            className="inline-block mt-2 px-5 py-2.5 rounded-full bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors"
+          >
+            Go to Portfolio
+          </a>
+        </div>
+      )}
+
+      <HowItWorks />
+
+      {hasData && <>
       <div className="app-card p-5 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800">Horizon Metrics</h2>
         <div className="grid gap-3 md:grid-cols-3">
@@ -385,6 +437,7 @@ export default function PerformancePage() {
           </div>
         )}
       </div>
+      </>}
     </div>
   )
 }
@@ -418,6 +471,76 @@ function ScoreboardTable({ title, rows }: { title: string; rows: ScoreboardRow[]
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HowItWorks() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="app-card p-5">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between text-sm font-semibold text-slate-800"
+      >
+        <span>How does Performance Proof work?</span>
+        <span className="text-slate-400 text-xs">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="mt-4 space-y-4 text-sm text-slate-600 leading-relaxed">
+          <div>
+            <h3 className="font-semibold text-slate-800 mb-1">The idea</h3>
+            <p>
+              Most AI-powered investment tools make predictions but never tell you if they were right.
+              Performance Proof is different: every recommendation the AI makes is recorded with a timestamp
+              and the stock price at that moment. Then we check back later to see what actually happened.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-slate-800 mb-1">How it works, step by step</h3>
+            <ol className="list-decimal list-inside space-y-1.5">
+              <li>You add stocks to your <span className="font-medium">Portfolio</span></li>
+              <li>The AI analyses your holdings and generates <span className="font-medium">buy</span>, <span className="font-medium">sell</span>, or <span className="font-medium">hold</span> recommendations with a confidence percentage</li>
+              <li>Each recommendation is <span className="font-medium">snapshotted</span> — we record the stock price, the action, and the confidence</li>
+              <li>After <span className="font-medium">1 day</span>, <span className="font-medium">7 days</span>, and <span className="font-medium">30 days</span>, we look up the actual stock price and calculate whether the recommendation was right</li>
+            </ol>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-slate-800 mb-1">What counts as a win?</h3>
+            <ul className="list-disc list-inside space-y-1">
+              <li><span className="font-medium">Buy</span> wins if the stock went up</li>
+              <li><span className="font-medium">Sell</span> wins if the stock went down</li>
+              <li><span className="font-medium">Hold</span> wins if the stock stayed within 2% (it was right that nothing dramatic would happen)</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-slate-800 mb-1">What you see on this page</h3>
+            <ul className="list-disc list-inside space-y-1">
+              <li><span className="font-medium">Horizon Metrics</span> — overall win rate and average returns across the 1d, 7d, and 30d checkpoints</li>
+              <li><span className="font-medium">Confidence Calibration</span> — is the AI accurate when it says it&apos;s 80% confident vs 60%? The bars show how many samples exist per confidence range</li>
+              <li><span className="font-medium">Strategy Scoreboard</span> — performance broken down by action type (buy/sell/hold), risk level (safe/interesting/spicy), and confidence bucket</li>
+              <li><span className="font-medium">Recommendation Outcomes</span> — the raw table of every recommendation, its entry price, return, and whether it was a win or loss</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-slate-800 mb-1">Statuses explained</h3>
+            <ul className="list-disc list-inside space-y-1">
+              <li><span className="font-medium">Pending</span> — not enough time has passed to score all three horizons yet</li>
+              <li><span className="font-medium">Scored</span> — all three checkpoints have been evaluated with real price data</li>
+              <li><span className="font-medium">Stale</span> — we tried to evaluate but couldn&apos;t find reliable price data for some checkpoints (e.g. market was closed, data gap)</li>
+            </ul>
+          </div>
+
+          <p className="text-xs text-slate-400 pt-2 border-t border-slate-100">
+            Evaluation runs automatically when you visit this page. You can also click &quot;Run Evaluation&quot; to manually trigger it.
+            The more recommendations you generate over time, the more meaningful these metrics become.
+          </p>
         </div>
       )}
     </div>

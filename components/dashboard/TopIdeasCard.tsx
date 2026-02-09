@@ -67,7 +67,7 @@ export function TopIdeasCard({ ideas }: TopIdeasCardProps) {
                 </p>
               </div>
               <span className="text-xs text-slate-500 shrink-0">
-                {idea.currency === 'GBP' ? '£' : '$'}
+                {idea.currency === 'GBP' || idea.currency === 'GBp' ? '£' : idea.currency === 'USD' ? '$' : '€'}
                 {idea.currentPrice.toFixed(2)}
               </span>
             </div>

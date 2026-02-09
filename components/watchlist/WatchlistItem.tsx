@@ -40,7 +40,7 @@ export function WatchlistItemCard({
   const [quantity, setQuantity] = useState('1')
   const isGain = changePercent > 0
   const isLoss = changePercent < 0
-  const symbol = currency === 'EUR' ? '\u20AC' : '$'
+  const symbol = currency === 'GBP' || currency === 'GBp' ? '\u00A3' : currency === 'USD' ? '$' : '\u20AC'
 
   const daysWatched = Math.floor(
     (Date.now() - new Date(addedAt).getTime()) / (1000 * 60 * 60 * 24)

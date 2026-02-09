@@ -174,7 +174,7 @@ export class YahooPriceProvider implements PriceProvider {
         price: quote.regularMarketPrice,
         change: quote.regularMarketChange ?? 0,
         changePercent: quote.regularMarketChangePercent ?? 0,
-        currency: quote.currency ?? 'USD',
+        currency: quote.currency ?? 'EUR',
         name: quote.shortName ?? quote.longName ?? ticker,
       }
 

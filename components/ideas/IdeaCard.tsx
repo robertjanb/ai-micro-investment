@@ -70,7 +70,7 @@ export function IdeaCard({
   const [portfolioState, setPortfolioState] = useState<'idle' | 'quantity' | 'adding' | 'added'>('idle')
   const [quantity, setQuantity] = useState(1)
   const [error, setError] = useState<string | null>(null)
-  const symbol = currency === 'EUR' ? '\u20AC' : '$'
+  const symbol = currency === 'GBP' || currency === 'GBp' ? '\u00A3' : currency === 'USD' ? '$' : '\u20AC'
 
   const activeSignals = (Object.entries(signals) as [string, boolean][])
     .filter(([, v]) => v)

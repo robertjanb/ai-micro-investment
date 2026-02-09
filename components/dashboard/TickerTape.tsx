@@ -28,7 +28,7 @@ export function TickerTape({ tickers }: TickerTapeProps) {
                 {t.ticker}
               </span>
               <span className="text-xs text-slate-500">
-                {t.currency === 'GBP' ? '£' : '$'}
+                {t.currency === 'GBP' || t.currency === 'GBp' ? '£' : t.currency === 'USD' ? '$' : '€'}
                 {t.price.toFixed(2)}
               </span>
               <span

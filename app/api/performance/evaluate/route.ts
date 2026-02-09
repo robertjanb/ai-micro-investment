@@ -8,6 +8,7 @@ import {
   PERFORMANCE_HORIZONS,
   addDays,
   calculateReturnPct,
+  getConfidenceBucket,
   getDataQualityFromTiming,
   isPerformanceProofEnabled,
   isWinningOutcome,
@@ -42,6 +43,12 @@ export async function POST(req: Request) {
       ? [session.user.id]
       : (await prisma.user.findMany({ select: { id: true } })).map((user) => user.id)
 
+    // Backfill: create snapshots for any recommendations that don't have them
+    const priceProvider = getPriceProvider()
+    for (const userId of userIds) {
+      await backfillMissingSnapshots(userId, priceProvider)
+    }
+
     const summary = {
       usersProcessed: userIds.length,
       snapshotsChecked: 0,
@@ -52,7 +59,6 @@ export async function POST(req: Request) {
       staleSnapshots: 0,
     }
 
-    const priceProvider = getPriceProvider()
     const historyCache = new Map<string, PricePoint[]>()
 
     for (const userId of userIds) {
@@ -141,8 +147,19 @@ async function evaluateUserSnapshots(
           })
           evaluationMap.set(horizon, { ...existing, dataQuality: 'ok', returnPct, isWin, exitPrice })
         } else {
-          const created = await prisma.recommendationEvaluation.create({
-            data: {
+          const created = await prisma.recommendationEvaluation.upsert({
+            where: {
+              snapshotId_horizonDays: { snapshotId: snapshot.id, horizonDays: horizon },
+            },
+            update: {
+              targetDate,
+              evaluatedAt: now,
+              exitPrice,
+              returnPct,
+              isWin,
+              dataQuality: 'ok',
+            },
+            create: {
               snapshotId: snapshot.id,
               horizonDays: horizon,
               targetDate,
@@ -182,8 +199,19 @@ async function evaluateUserSnapshots(
           missingMarked += 1
         }
       } else {
-        const created = await prisma.recommendationEvaluation.create({
-          data: {
+        const created = await prisma.recommendationEvaluation.upsert({
+          where: {
+            snapshotId_horizonDays: { snapshotId: snapshot.id, horizonDays: horizon },
+          },
+          update: {
+            targetDate,
+            evaluatedAt: now,
+            exitPrice: null,
+            returnPct: null,
+            isWin: null,
+            dataQuality: 'missing',
+          },
+          create: {
             snapshotId: snapshot.id,
             horizonDays: horizon,
             targetDate,
@@ -243,6 +271,97 @@ async function resolveExitPrice(
   const afterOrOnTarget = history.find((point) => point.timestamp.getTime() >= targetDate.getTime())
 
   return afterOrOnTarget?.price ?? null
+}
+
+async function backfillMissingSnapshots(
+  userId: string,
+  priceProvider: ReturnType<typeof getPriceProvider>
+) {
+  // Find recommendations that have no corresponding snapshot
+  const recommendations = await prisma.recommendation.findMany({
+    where: {
+      userId,
+      snapshots: { none: {} },
+    },
+    select: {
+      id: true,
+      ticker: true,
+      action: true,
+      confidence: true,
+      holdingId: true,
+      generatedAt: true,
+      createdAt: true,
+    },
+  })
+
+  if (recommendations.length === 0) return
+
+  // Get holdings and ideas for context
+  const [holdings, ideas] = await Promise.all([
+    prisma.holding.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        ideaId: true,
+        ticker: true,
+        currentPrice: true,
+      },
+    }),
+    prisma.idea.findMany({
+      select: {
+        id: true,
+        ticker: true,
+        riskLevel: true,
+        currentPrice: true,
+        currency: true,
+      },
+      orderBy: { generatedDate: 'desc' },
+      take: 100,
+    }),
+  ])
+
+  const holdingByTicker = new Map(holdings.map((h) => [h.ticker, h]))
+  const ideaByTicker = new Map(ideas.map((i) => [i.ticker, i]))
+  const validIdeaIds = new Set(ideas.map((i) => i.id))
+
+  for (const rec of recommendations) {
+    const holding = holdingByTicker.get(rec.ticker)
+    const idea = ideaByTicker.get(rec.ticker)
+
+    let entryPrice = holding?.currentPrice ?? idea?.currentPrice ?? null
+
+    if (!entryPrice || entryPrice <= 0) {
+      try {
+        const fetched = await priceProvider.getCurrentPrice(rec.ticker)
+        entryPrice = fetched > 0 ? fetched : null
+      } catch {
+        entryPrice = null
+      }
+    }
+
+    if (!entryPrice || entryPrice <= 0) continue
+
+    // Only use ideaId if it still exists (holdings may reference deleted ideas)
+    const ideaId = idea?.id ?? (holding?.ideaId && validIdeaIds.has(holding.ideaId) ? holding.ideaId : null)
+
+    await prisma.recommendationSnapshot.create({
+      data: {
+        userId,
+        recommendationId: rec.id,
+        holdingId: rec.holdingId ?? holding?.id ?? null,
+        ideaId,
+        ticker: rec.ticker,
+        action: rec.action,
+        confidence: rec.confidence,
+        confidenceBucket: getConfidenceBucket(rec.confidence),
+        generatedAt: rec.createdAt,
+        generatedDate: rec.generatedAt,
+        entryPrice,
+        currency: idea?.currency ?? 'EUR',
+        riskLevel: idea?.riskLevel ?? null,
+      },
+    })
+  }
 }
 
 async function recordCronStatus({
