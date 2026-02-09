@@ -10,29 +10,84 @@ import YahooFinance from 'yahoo-finance2'
 // Create Yahoo Finance instance
 const yahooFinance = new YahooFinance()
 
-// USD to EUR conversion rate (fetched on startup, refreshed periodically)
+// Exchange rates to EUR (fetched on startup, refreshed periodically)
 let usdToEur = 0.92 // Default fallback
+let gbpToEur = 1.17 // Default fallback
 let exchangeRateLastFetched = 0
 const EXCHANGE_RATE_TTL = 60 * 60 * 1000 // 1 hour
 
-async function getUsdToEur(): Promise<number> {
+async function getExchangeRates(): Promise<{ usdToEur: number; gbpToEur: number }> {
   if (Date.now() - exchangeRateLastFetched < EXCHANGE_RATE_TTL) {
-    return usdToEur
+    return { usdToEur, gbpToEur }
   }
 
   try {
-    const quote = await yahooFinance.quote('EURUSD=X', {}, { validateResult: false })
-    if (quote && typeof quote === 'object' && 'regularMarketPrice' in quote) {
-      const price = quote.regularMarketPrice as number
+    const [eurUsdQuote, gbpEurQuote] = await Promise.all([
+      yahooFinance.quote('EURUSD=X', {}, { validateResult: false }),
+      yahooFinance.quote('GBPEUR=X', {}, { validateResult: false }),
+    ])
+    if (eurUsdQuote && typeof eurUsdQuote === 'object' && 'regularMarketPrice' in eurUsdQuote) {
+      const price = eurUsdQuote.regularMarketPrice as number
       // EURUSD quote gives us how many USD per EUR, we need USD to EUR
       usdToEur = 1 / price
-      exchangeRateLastFetched = Date.now()
     }
+    if (gbpEurQuote && typeof gbpEurQuote === 'object' && 'regularMarketPrice' in gbpEurQuote) {
+      gbpToEur = gbpEurQuote.regularMarketPrice as number
+    }
+    exchangeRateLastFetched = Date.now()
   } catch (error) {
-    console.warn('Failed to fetch exchange rate, using cached value:', error)
+    console.warn('Failed to fetch exchange rates, using cached values:', error)
   }
 
-  return usdToEur
+  return { usdToEur, gbpToEur }
+}
+
+// Keep backward-compatible helper
+async function getUsdToEur(): Promise<number> {
+  const rates = await getExchangeRates()
+  return rates.usdToEur
+}
+
+/**
+ * Convert a price in any currency to EUR.
+ * Handles GBp (pence) by dividing by 100 first, then converting GBP→EUR.
+ */
+function convertToEur(price: number, currency: string): number {
+  switch (currency) {
+    case 'EUR':
+      return price
+    case 'GBp':
+      // GBp = pence. Divide by 100 to get GBP, then convert to EUR.
+      return (price / 100) * gbpToEur
+    case 'GBP':
+      return price * gbpToEur
+    case 'USD':
+      return price * usdToEur
+    default:
+      // Assume USD for unknown currencies
+      return price * usdToEur
+  }
+}
+
+/**
+ * Simple date-seeded PRNG for deterministic daily shuffles.
+ * Same date string → same sequence of pseudo-random numbers.
+ */
+function seededRandom(seed: string): () => number {
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    const chr = seed.charCodeAt(i)
+    hash = ((hash << 5) - hash) + chr
+    hash |= 0 // Convert to 32-bit int
+  }
+
+  return () => {
+    hash = ((hash << 13) ^ hash) - (hash >>> 21)
+    hash = ((hash << 7) ^ hash) + (hash >>> 4)
+    hash = hash ^ (hash >>> 11)
+    // Normalize to 0–1
+    return (hash >>> 0) / 4294967296
+  }
 }
 
 // Cache for screener results
@@ -71,7 +126,7 @@ const MARKET_FALLBACK_TICKERS: Record<string, string[]> = {
   NL: ['AD.AS', 'AALB.AS', 'ABN.AS', 'AKZA.AS', 'ASM.AS', 'ASML.AS', 'ASRNL.AS', 'BESI.AS', 'INGA.AS', 'KPN.AS', 'NN.AS', 'PHIA.AS', 'RAND.AS', 'SHELL.AS', 'WKL.AS',
        'BAMNB.AS', 'OCI.AS', 'APAM.AS', 'SBMO.AS', 'ARCAD.AS', 'HEIJM.AS'],
   GB: ['AZN.L', 'ULVR.L', 'SHEL.L', 'RIO.L', 'HSBA.L', 'BARC.L', 'BP.L', 'GSK.L', 'DGE.L', 'VOD.L',
-       'LLOY.L', 'IAG.L', 'EZJ.L', 'PHNX.L', 'MNG.L', 'NWG.L', 'LGEN.L', 'RR.L', 'AAL.L', 'AVV.L'],
+       'LLOY.L', 'IAG.L', 'EZJ.L', 'PHNX.L', 'MNG.L', 'NWG.L', 'LGEN.L', 'RR.L', 'AAL.L'],
 }
 
 const NON_US_SUFFIXES = Array.from(
@@ -223,7 +278,7 @@ export class RealIdeaProvider implements IdeaProvider {
 
   private buildFallbackIdeas(stocks: EnrichedStockData[], count: number): Idea[] {
     return stocks.slice(0, count).map((stock) => {
-      const marketCapEur = stock.currency === 'EUR' ? stock.marketCap : stock.marketCap * usdToEur
+      const marketCapEur = convertToEur(stock.marketCap, stock.currency)
       const riskLevel: Idea['riskLevel'] =
         marketCapEur >= 20_000_000_000 ? 'safe' : marketCapEur >= 2_000_000_000 ? 'interesting' : 'spicy'
 
@@ -283,8 +338,11 @@ export class RealIdeaProvider implements IdeaProvider {
     const unique = Array.from(new Set(allCandidates))
     const marketFiltered = unique.filter((ticker) => isTickerAllowedForMarkets(ticker, config.markets))
 
-    // Shuffle to get variety
-    const shuffled = marketFiltered.sort(() => Math.random() - 0.5)
+    // Deterministic daily shuffle: same day + same markets = same candidates
+    const today = new Date().toISOString().split('T')[0]
+    const seed = `${today}_${config.markets.sort().join(',')}`
+    const rng = seededRandom(seed)
+    const shuffled = marketFiltered.sort(() => rng() - 0.5)
 
     return shuffled.slice(0, count)
   }
@@ -403,7 +461,7 @@ export class RealIdeaProvider implements IdeaProvider {
 
   private async enrichWithFundamentals(tickers: string[]): Promise<RealStockData[]> {
     const enriched: RealStockData[] = []
-    const usdEur = await getUsdToEur()
+    await getExchangeRates() // Ensure exchange rates are fresh
     let missingPrice = 0
     let fetchErrors = 0
 
@@ -451,7 +509,7 @@ export class RealIdeaProvider implements IdeaProvider {
           continue
         }
 
-        const priceEur = currency === 'EUR' ? priceValue : priceValue * usdEur
+        const priceEur = convertToEur(priceValue, currency)
 
         const financialData = summary.financialData || {}
 
@@ -506,7 +564,7 @@ export class RealIdeaProvider implements IdeaProvider {
       if (!isTickerAllowedForMarkets(c.ticker, config.markets)) { bump('marketNotAllowed'); return false }
 
       // Filter by market cap
-      const marketCapEur = c.currency === 'EUR' ? c.marketCap : c.marketCap * usdToEur
+      const marketCapEur = convertToEur(c.marketCap, c.currency)
       if (config.minMarketCapEur > 0 && marketCapEur < config.minMarketCapEur) { bump('marketCapTooLow'); return false }
       if (config.maxMarketCapEur !== null && marketCapEur > config.maxMarketCapEur) { bump('marketCapTooHigh'); return false }
 
@@ -574,19 +632,28 @@ export class RealIdeaProvider implements IdeaProvider {
 
     const prompt = realStockAnalysisPrompt(promptData)
 
-    const response = await getChatCompletion([
+    // temperature=0 ensures the same stock data produces consistent, deterministic analysis
+    const rawResponse = await getChatCompletion([
       { role: 'user', content: prompt },
-    ])
+    ], undefined, { temperature: 0 })
+
+    // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+    const response = rawResponse
+      .replace(/^```(?:json)?\s*\n?/i, '')
+      .replace(/\n?```\s*$/i, '')
+      .trim()
 
     let parsed: { ideas: Array<Record<string, unknown>> }
     try {
       parsed = JSON.parse(response)
     } catch {
-      throw new Error('AI returned invalid JSON for real stock analysis')
+      console.warn('AI returned invalid JSON for real stock analysis, falling back. Raw response:', rawResponse.slice(0, 200))
+      return []
     }
 
     if (!parsed.ideas || !Array.isArray(parsed.ideas)) {
-      throw new Error('AI response missing ideas array')
+      console.warn('AI response missing ideas array, falling back')
+      return []
     }
 
     const stockByTicker = new Map(stocks.map((s) => [s.ticker.toUpperCase(), s]))
@@ -664,12 +731,12 @@ export class RealIdeaProvider implements IdeaProvider {
     // Get current price from Yahoo Finance
     let currentPrice = idea.currentPrice
     try {
+      await getExchangeRates() // Ensure rates are fresh
       const quote = await yahooFinance.quote(ticker, {}, { validateResult: false })
       if (quote && typeof quote === 'object' && 'regularMarketPrice' in quote) {
         const price = quote.regularMarketPrice as number
         const currency = (quote as { currency?: string }).currency || 'USD'
-        const usdEur = await getUsdToEur()
-        currentPrice = currency === 'EUR' ? price : price * usdEur
+        currentPrice = convertToEur(price, currency)
       }
     } catch (error) {
       console.warn(`Failed to fetch current price for ${ticker}, using stored price:`, error)

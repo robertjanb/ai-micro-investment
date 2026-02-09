@@ -43,7 +43,8 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 
 export async function getChatCompletion(
   messages: ChatMessage[],
-  systemPrompt?: string
+  systemPrompt?: string,
+  options?: { temperature?: number }
 ): Promise<string> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY is not configured')
@@ -74,6 +75,7 @@ export async function getChatCompletion(
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 4096,
+        temperature: options?.temperature ?? 0.7,
         messages: allMessages,
       }),
     })

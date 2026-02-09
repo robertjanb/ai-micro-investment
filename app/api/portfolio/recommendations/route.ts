@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getRecommendationProvider } from '@/lib/data-sources'
+import { getRecommendationProvider, getPriceProvider } from '@/lib/data-sources'
 import type { HoldingData, Signals } from '@/lib/data-sources/types'
+import { getConfidenceBucket, isPerformanceProofEnabled, normalizeDate } from '@/lib/performance'
+import { ensureMockPerformanceHistory } from '@/lib/mock/performance-history'
 
 export async function GET(request: NextRequest) {
   const session = await getSession()
@@ -13,11 +15,31 @@ export async function GET(request: NextRequest) {
   const force = request.nextUrl.searchParams.get('force') === 'true'
 
   try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = normalizeDate()
+
+    if (isPerformanceProofEnabled()) {
+      await ensureMockPerformanceHistory(session.user.id)
+    }
 
     // If force-refresh, delete existing recommendations for today
     if (force) {
+      if (isPerformanceProofEnabled()) {
+        await prisma.recommendationEvaluation.deleteMany({
+          where: {
+            snapshot: {
+              userId: session.user.id,
+              generatedDate: today,
+            },
+          },
+        })
+        await prisma.recommendationSnapshot.deleteMany({
+          where: {
+            userId: session.user.id,
+            generatedDate: today,
+          },
+        })
+      }
+
       await prisma.recommendation.deleteMany({
         where: {
           userId: session.user.id,
@@ -44,6 +66,54 @@ export async function GET(request: NextRequest) {
       })
 
       if (existingRecommendations.length > 0) {
+        if (isPerformanceProofEnabled()) {
+          const existingSnapshots = await prisma.recommendationSnapshot.count({
+            where: {
+              userId: session.user.id,
+              generatedDate: today,
+            },
+          })
+
+          if (existingSnapshots === 0) {
+            const [holdings, todaysIdeas] = await Promise.all([
+              prisma.holding.findMany({
+                where: { userId: session.user.id },
+                select: {
+                  id: true,
+                  ideaId: true,
+                  ticker: true,
+                  currentPrice: true,
+                },
+              }),
+              prisma.idea.findMany({
+                where: { generatedDate: today },
+                select: {
+                  id: true,
+                  ticker: true,
+                  riskLevel: true,
+                  currentPrice: true,
+                  currency: true,
+                },
+              }),
+            ])
+
+            await createRecommendationSnapshots({
+              userId: session.user.id,
+              generatedDate: today,
+              recommendations: existingRecommendations.map((r) => ({
+                id: r.id,
+                ticker: r.ticker,
+                action: r.action,
+                confidence: r.confidence,
+                holdingId: r.holdingId,
+                generatedAt: r.createdAt,
+              })),
+              holdings,
+              todaysIdeas,
+            })
+          }
+        }
+
         return NextResponse.json({
           recommendations: existingRecommendations.map((r) => ({
             id: r.id,
@@ -75,6 +145,9 @@ export async function GET(request: NextRequest) {
         companyName: true,
         signals: true,
         confidenceScore: true,
+        riskLevel: true,
+        currentPrice: true,
+        currency: true,
       },
     })
 
@@ -133,6 +206,23 @@ export async function GET(request: NextRequest) {
       })
     )
 
+    if (isPerformanceProofEnabled()) {
+      await createRecommendationSnapshots({
+        userId: session.user.id,
+        generatedDate: today,
+        recommendations: storedRecommendations.map((r) => ({
+          id: r.id,
+          ticker: r.ticker,
+          action: r.action,
+          confidence: r.confidence,
+          holdingId: r.holdingId,
+          generatedAt: r.createdAt,
+        })),
+        holdings,
+        todaysIdeas,
+      })
+    }
+
     return NextResponse.json({
       recommendations: storedRecommendations.map((r) => ({
         id: r.id,
@@ -153,5 +243,83 @@ export async function GET(request: NextRequest) {
       { error: 'Failed to generate recommendations' },
       { status: 500 }
     )
+  }
+}
+
+async function createRecommendationSnapshots({
+  userId,
+  generatedDate,
+  recommendations,
+  holdings,
+  todaysIdeas,
+}: {
+  userId: string
+  generatedDate: Date
+  recommendations: Array<{
+    id: string
+    ticker: string
+    action: string
+    confidence: number
+    holdingId: string | null
+    generatedAt: Date
+  }>
+  holdings: Array<{
+    id: string
+    ideaId: string | null
+    ticker: string
+    currentPrice: number
+  }>
+  todaysIdeas: Array<{
+    id: string
+    ticker: string
+    riskLevel: string
+    currentPrice: number
+    currency: string
+  }>
+}) {
+  const ideaByTicker = new Map(todaysIdeas.map((idea) => [idea.ticker, idea]))
+  const holdingByTicker = new Map(holdings.map((holding) => [holding.ticker, holding]))
+  const priceCache = new Map<string, number | null>()
+  const priceProvider = getPriceProvider()
+
+  for (const recommendation of recommendations) {
+    const holding = holdingByTicker.get(recommendation.ticker)
+    const idea = ideaByTicker.get(recommendation.ticker)
+
+    let entryPrice = holding?.currentPrice ?? idea?.currentPrice ?? null
+
+    if (!entryPrice || entryPrice <= 0) {
+      if (!priceCache.has(recommendation.ticker)) {
+        try {
+          const fetched = await priceProvider.getCurrentPrice(recommendation.ticker)
+          priceCache.set(recommendation.ticker, fetched > 0 ? fetched : null)
+        } catch {
+          priceCache.set(recommendation.ticker, null)
+        }
+      }
+      entryPrice = priceCache.get(recommendation.ticker) ?? null
+    }
+
+    if (!entryPrice || entryPrice <= 0) {
+      continue
+    }
+
+    await prisma.recommendationSnapshot.create({
+      data: {
+        userId,
+        recommendationId: recommendation.id,
+        holdingId: recommendation.holdingId ?? holding?.id ?? null,
+        ideaId: idea?.id ?? holding?.ideaId ?? null,
+        ticker: recommendation.ticker,
+        action: recommendation.action,
+        confidence: recommendation.confidence,
+        confidenceBucket: getConfidenceBucket(recommendation.confidence),
+        generatedAt: recommendation.generatedAt,
+        generatedDate,
+        entryPrice,
+        currency: idea?.currency ?? 'EUR',
+        riskLevel: idea?.riskLevel ?? null,
+      },
+    })
   }
 }

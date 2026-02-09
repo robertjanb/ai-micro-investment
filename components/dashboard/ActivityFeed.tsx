@@ -92,7 +92,7 @@ export function ActivityFeed({ recommendations, hitRate, recentOutcomes }: Activ
               Track Record
             </span>
             <Link
-              href="/history"
+              href="/performance"
               className="text-[10px] uppercase tracking-[0.15em] text-slate-400 hover:text-slate-700"
             >
               See all &rarr;

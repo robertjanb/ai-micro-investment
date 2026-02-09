@@ -21,8 +21,10 @@ interface IdeaCardProps {
   currentPrice: number
   currency: string
   priceHistory?: number[]
-  onAddToWatchlist?: (ideaId: string) => void
+  onAddToWatchlist?: (ideaId: string) => Promise<boolean>
+  onAddToPortfolio?: (ideaId: string, quantity: number) => Promise<boolean>
   isOnWatchlist?: boolean
+  isInPortfolio?: boolean
 }
 
 const RISK_STYLES = {
@@ -59,14 +61,54 @@ export function IdeaCard({
   currency,
   priceHistory,
   onAddToWatchlist,
+  onAddToPortfolio,
   isOnWatchlist,
+  isInPortfolio,
 }: IdeaCardProps) {
   const [showBear, setShowBear] = useState(false)
+  const [watchlistLoading, setWatchlistLoading] = useState(false)
+  const [portfolioState, setPortfolioState] = useState<'idle' | 'quantity' | 'adding' | 'added'>('idle')
+  const [quantity, setQuantity] = useState(1)
+  const [error, setError] = useState<string | null>(null)
   const symbol = currency === 'EUR' ? '\u20AC' : '$'
 
   const activeSignals = (Object.entries(signals) as [string, boolean][])
     .filter(([, v]) => v)
     .map(([k]) => SIGNAL_LABELS[k] || k)
+
+  async function handleWatchlist() {
+    if (!onAddToWatchlist || isOnWatchlist || watchlistLoading) return
+    setWatchlistLoading(true)
+    setError(null)
+    try {
+      const success = await onAddToWatchlist(id)
+      if (!success) {
+        setError('Failed to add to watchlist')
+      }
+    } catch {
+      setError('Failed to add to watchlist')
+    } finally {
+      setWatchlistLoading(false)
+    }
+  }
+
+  async function handlePortfolioConfirm() {
+    if (!onAddToPortfolio || portfolioState === 'adding') return
+    setPortfolioState('adding')
+    setError(null)
+    try {
+      const success = await onAddToPortfolio(id, quantity)
+      if (success) {
+        setPortfolioState('added')
+      } else {
+        setError('Failed to add to portfolio')
+        setPortfolioState('quantity')
+      }
+    } catch {
+      setError('Failed to add to portfolio')
+      setPortfolioState('quantity')
+    }
+  }
 
   return (
     <div className="app-card p-5">
@@ -134,23 +176,75 @@ export function IdeaCard({
         </div>
       )}
 
-      {/* Bear case toggle + watchlist action */}
-      <div className="mt-4 flex items-center justify-between">
+      {/* Error message */}
+      {error && (
+        <div className="mt-3 text-xs text-red-500">{error}</div>
+      )}
+
+      {/* Actions row */}
+      <div className="mt-4 flex items-center justify-between gap-2">
         <button
           onClick={() => setShowBear(!showBear)}
           className="text-xs uppercase tracking-[0.15em] text-slate-400 hover:text-slate-700"
         >
           {showBear ? 'Hide bear case' : 'Bear case'}
         </button>
-        {onAddToWatchlist && (
-          <button
-            onClick={() => onAddToWatchlist(id)}
-            disabled={isOnWatchlist}
-            className="text-xs px-3 py-1.5 rounded-full border border-teal-400 text-teal-700 hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isOnWatchlist ? 'Watching' : 'Add to watchlist'}
-          </button>
-        )}
+
+        <div className="flex items-center gap-2">
+          {/* Watchlist button */}
+          {onAddToWatchlist && (
+            <button
+              onClick={handleWatchlist}
+              disabled={isOnWatchlist || watchlistLoading}
+              className="text-xs px-3 py-1.5 rounded-full border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {watchlistLoading ? 'Adding...' : isOnWatchlist ? 'Watching' : 'Watch'}
+            </button>
+          )}
+
+          {/* Portfolio button */}
+          {onAddToPortfolio && portfolioState === 'idle' && !isInPortfolio && (
+            <button
+              onClick={() => setPortfolioState('quantity')}
+              className="text-xs px-3 py-1.5 rounded-full border border-teal-400 text-teal-700 hover:bg-teal-50"
+            >
+              Add to portfolio
+            </button>
+          )}
+
+          {/* Quantity input */}
+          {portfolioState === 'quantity' && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-14 px-2 py-1 text-xs border border-slate-200 rounded text-center text-slate-700 bg-white"
+              />
+              <button
+                onClick={handlePortfolioConfirm}
+                className="text-xs px-3 py-1.5 rounded-full bg-teal-600 text-white hover:bg-teal-700"
+              >
+                Buy
+              </button>
+              <button
+                onClick={() => { setPortfolioState('idle'); setError(null) }}
+                className="text-xs px-2 py-1.5 text-slate-400 hover:text-slate-600"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {portfolioState === 'adding' && (
+            <span className="text-xs text-slate-400">Adding...</span>
+          )}
+
+          {(portfolioState === 'added' || isInPortfolio) && (
+            <span className="text-xs text-teal-600 font-medium">In portfolio</span>
+          )}
+        </div>
       </div>
 
       {showBear && (

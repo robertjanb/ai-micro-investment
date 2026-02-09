@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { getSession } from '@/lib/auth'
 import { LogoutButton } from '@/components/auth/LogoutButton'
 import { SessionProvider } from '@/components/providers/SessionProvider'
+import { getAppVersionLabel } from '@/lib/version'
 
 export default async function MainLayout({
   children,
@@ -14,6 +15,8 @@ export default async function MainLayout({
   if (!session) {
     redirect('/login')
   }
+
+  const versionLabel = getAppVersionLabel()
 
   return (
     <SessionProvider>
@@ -28,6 +31,9 @@ export default async function MainLayout({
                 >
                   Micro-Investment
                 </Link>
+                <span className="hidden md:inline text-[10px] uppercase tracking-[0.16em] text-slate-500 border border-slate-200 rounded-full px-2.5 py-1 bg-white/80">
+                  v{versionLabel}
+                </span>
                 <nav className="hidden sm:flex items-center gap-2">
                   <Link
                     href="/dashboard"
@@ -58,6 +64,12 @@ export default async function MainLayout({
                     className="px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-600 hover:text-slate-900 rounded-full border border-slate-200 bg-white/70"
                   >
                     History
+                  </Link>
+                  <Link
+                    href="/performance"
+                    className="px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-slate-600 hover:text-slate-900 rounded-full border border-slate-200 bg-white/70"
+                  >
+                    Performance
                   </Link>
                 </nav>
               </div>
@@ -108,6 +120,12 @@ export default async function MainLayout({
               className="text-xs uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 px-3 py-2"
             >
               History
+            </Link>
+            <Link
+              href="/performance"
+              className="text-xs uppercase tracking-[0.2em] text-slate-500 hover:text-slate-900 px-3 py-2"
+            >
+              Performance
             </Link>
           </div>
         </nav>

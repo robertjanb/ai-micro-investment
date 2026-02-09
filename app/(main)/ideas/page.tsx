@@ -43,6 +43,7 @@ function getVisitorSessionId(): string {
 export default function IdeasPage() {
   const [ideas, setIdeas] = useState<Idea[]>([])
   const [watchlistIds, setWatchlistIds] = useState<Set<string>>(new Set())
+  const [portfolioTickers, setPortfolioTickers] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [isFirstVisit, setIsFirstVisit] = useState(false)
   const [nudgeMessage, setNudgeMessage] = useState<string | null>(null)
@@ -50,9 +51,10 @@ export default function IdeasPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [ideasRes, watchlistRes] = await Promise.all([
+      const [ideasRes, watchlistRes, portfolioRes] = await Promise.all([
         fetch('/api/ideas'),
         fetch('/api/watchlist'),
+        fetch('/api/portfolio'),
       ])
 
       if (ideasRes.ok) {
@@ -67,6 +69,14 @@ export default function IdeasPage() {
           data.watchlist.map((item: { ideaId: string }) => item.ideaId)
         )
         setWatchlistIds(ids)
+      }
+
+      if (portfolioRes.ok) {
+        const data = await portfolioRes.json()
+        const tickers = new Set<string>(
+          (data.holdings || []).map((h: { ticker: string }) => h.ticker)
+        )
+        setPortfolioTickers(tickers)
       }
 
       const hasVisited = localStorage.getItem('hasVisitedIdeas')
@@ -85,7 +95,7 @@ export default function IdeasPage() {
     loadData()
   }, [loadData])
 
-  async function handleAddToWatchlist(ideaId: string) {
+  async function handleAddToWatchlist(ideaId: string): Promise<boolean> {
     try {
       const visitorSessionId = getVisitorSessionId()
       const res = await fetch('/api/watchlist', {
@@ -102,9 +112,47 @@ export default function IdeasPage() {
           setNudgeMessage(data.nudgeMessage)
           setTimeout(() => setNudgeMessage(null), 8000)
         }
+        return true
+      } else {
+        const data = await res.json().catch(() => ({}))
+        console.error('Watchlist add failed:', data.error || res.status)
+        return false
       }
     } catch (error) {
       console.error('Failed to add to watchlist:', error)
+      return false
+    }
+  }
+
+  async function handleAddToPortfolio(ideaId: string, quantity: number): Promise<boolean> {
+    try {
+      const idea = ideas.find((i) => i.id === ideaId)
+      if (!idea) return false
+
+      const res = await fetch('/api/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ideaId,
+          ticker: idea.ticker,
+          companyName: idea.companyName,
+          quantity,
+          purchasePrice: idea.currentPrice,
+          purchaseDate: new Date().toISOString().split('T')[0],
+        }),
+      })
+
+      if (res.ok) {
+        setPortfolioTickers((prev) => new Set(prev).add(idea.ticker))
+        return true
+      } else {
+        const data = await res.json().catch(() => ({}))
+        console.error('Portfolio add failed:', data.error || res.status)
+        return false
+      }
+    } catch (error) {
+      console.error('Failed to add to portfolio:', error)
+      return false
     }
   }
 
@@ -127,7 +175,7 @@ export default function IdeasPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header — full width */}
+      {/* Header -- full width */}
       <div className="app-card p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
@@ -138,7 +186,7 @@ export default function IdeasPage() {
               Today&apos;s Investment Ideas
             </h1>
             <p className="text-sm text-slate-600">
-              Signal-based picks with full reasoning. Ask the chat for deeper analysis.
+              Signal-based picks with full reasoning. Add directly to your portfolio or watchlist.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -192,7 +240,9 @@ export default function IdeasPage() {
                 currency={idea.currency}
                 priceHistory={idea.priceHistory?.map((p) => p.price)}
                 onAddToWatchlist={handleAddToWatchlist}
+                onAddToPortfolio={handleAddToPortfolio}
                 isOnWatchlist={watchlistIds.has(idea.id)}
+                isInPortfolio={portfolioTickers.has(idea.ticker)}
               />
             ))}
           </section>

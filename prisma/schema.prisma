@@ -18,6 +18,7 @@ model User {
   watchlist       WatchlistItem[]
   holdings        Holding[]
   recommendations Recommendation[]
+  recommendationSnapshots RecommendationSnapshot[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
@@ -57,6 +58,7 @@ model Idea {
   priceHistory    PriceHistory[]
   watchlistItems  WatchlistItem[]
   holdings        Holding[]
+  recommendationSnapshots RecommendationSnapshot[]
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -112,6 +114,7 @@ model Holding {
   updatedAt     DateTime         @updatedAt
 
   recommendations Recommendation[]
+  recommendationSnapshots RecommendationSnapshot[]
 
   @@unique([userId, ticker, purchaseDate])
   @@index([userId])
@@ -129,9 +132,60 @@ model Recommendation {
   confidence  Int
   generatedAt DateTime @default(now())
   createdAt   DateTime @default(now())
+  snapshots   RecommendationSnapshot[]
 
   @@unique([userId, ticker, generatedAt])
   @@index([userId, generatedAt])
+}
+
+model RecommendationSnapshot {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendationId String?
+  recommendation   Recommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+  holdingId        String?
+  holding          Holding?  @relation(fields: [holdingId], references: [id], onDelete: SetNull)
+  ideaId           String?
+  idea             Idea?     @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  ticker           String
+  action           String
+  confidence       Int
+  confidenceBucket String
+  generatedAt      DateTime
+  generatedDate    DateTime
+  entryPrice       Float
+  currency         String   @default("EUR")
+  riskLevel        String?
+  status           String   @default("pending") // 'pending' | 'scored' | 'stale'
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  evaluations RecommendationEvaluation[]
+
+  @@index([userId, generatedDate])
+  @@index([ticker])
+  @@index([confidence])
+  @@index([confidenceBucket])
+  @@index([status])
+}
+
+model RecommendationEvaluation {
+  id          String   @id @default(cuid())
+  snapshotId  String
+  snapshot    RecommendationSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  horizonDays Int
+  targetDate  DateTime
+  evaluatedAt DateTime @default(now())
+  exitPrice   Float?
+  returnPct   Float?
+  isWin       Boolean?
+  dataQuality String   @default("ok") // 'ok' | 'stale' | 'missing'
+  createdAt   DateTime @default(now())
+
+  @@unique([snapshotId, horizonDays])
+  @@index([horizonDays, targetDate])
+  @@index([dataQuality])
 }
 
 model CronJobStatus {

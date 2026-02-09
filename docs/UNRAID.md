@@ -30,6 +30,7 @@ Set these in Unraid container config:
 - `OPENROUTER_API_KEY=<your-openrouter-key>`
 - `AI_MODEL=anthropic/claude-sonnet-4-20250514`
 - `DATA_SOURCE=real` or `DATA_SOURCE=mock`
+- `PERFORMANCE_PROOF_ENABLED=true`
 - `FINNHUB_API_KEY=<optional-required-if-real>`
 
 ## 4) Deploy with Unraid Compose Manager (recommended)

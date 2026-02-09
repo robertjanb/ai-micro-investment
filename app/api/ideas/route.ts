@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getIdeaProvider, getPriceProvider } from '@/lib/data-sources'
 import { checkRateLimit, IDEAS_RATE_LIMIT } from '@/lib/rate-limit'
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -28,8 +28,26 @@ export async function GET() {
   }
 
   try {
+    const url = new URL(request.url)
+    const refresh = ['1', 'true', 'yes'].includes(
+      (url.searchParams.get('refresh') || '').toLowerCase()
+    )
+
     const today = new Date()
     today.setHours(0, 0, 0, 0)
+
+    if (refresh) {
+      const todaysIdeas = await prisma.idea.findMany({
+        where: { generatedDate: today },
+        select: { id: true },
+      })
+      if (todaysIdeas.length > 0) {
+        const ideaIds = todaysIdeas.map((idea) => idea.id)
+        await prisma.priceHistory.deleteMany({ where: { ideaId: { in: ideaIds } } })
+        await prisma.idea.deleteMany({ where: { id: { in: ideaIds } } })
+      }
+      await prisma.dailyIdeaBatch.deleteMany({ where: { generatedDate: today } })
+    }
 
     let batchCreated = false
     try {
@@ -59,9 +77,7 @@ export async function GET() {
     if (ideas.length === 0 && batchCreated) {
       try {
         const ideaProvider = getIdeaProvider()
-        const generatedIdeas = await ideaProvider.generateDailyIdeas(
-          3 + Math.floor(Math.random() * 3) // 3-5 ideas
-        )
+        const generatedIdeas = await ideaProvider.generateDailyIdeas(5)
 
         if (generatedIdeas.length === 0) {
           // No candidates matched filters — return empty with hint

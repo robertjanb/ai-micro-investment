@@ -18,9 +18,15 @@ export class MockIdeaProvider implements IdeaProvider {
       minDividendYield: config.minDividendYield,
     })
 
-    const response = await getChatCompletion([
+    const rawResponse = await getChatCompletion([
       { role: 'user', content: prompt },
-    ])
+    ], undefined, { temperature: 0 })
+
+    // Strip markdown code fences if present
+    const response = rawResponse
+      .replace(/^```(?:json)?\s*\n?/i, '')
+      .replace(/\n?```\s*$/i, '')
+      .trim()
 
     let parsed: { ideas: Record<string, unknown>[] }
     try {
